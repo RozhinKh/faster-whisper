@@ -20,6 +20,7 @@ models/
 # Benchmark results output
 benchmark/results/
 benchmark/reference_outputs.json
+artemis_results.json
 
 # Logs
 logs/

@@ -356,6 +356,57 @@ def _save_results(payload: dict, override_path: Optional[str] = None) -> str:
     return path
 
 
+def _write_artemis_metrics(payload: dict) -> None:
+    """Flatten key metrics into artemis_results.json at the repo root."""
+    metrics: dict = {}
+    suites = payload.get("suites", {})
+
+    speed = suites.get("speed", {})
+    if "min_s" in speed:
+        metrics["speed_min_s"] = speed["min_s"]
+
+    mem = suites.get("memory", {})
+    gpu = mem.get("gpu", {})
+    if "max_vram_mib" in gpu:
+        metrics["memory_max_vram_mib"] = gpu["max_vram_mib"]
+    if "max_power_w" in gpu:
+        metrics["memory_max_power_w"] = gpu["max_power_w"]
+    if "ram_increase_mib" in mem:
+        metrics["memory_ram_increase_mib"] = mem["ram_increase_mib"]
+
+    wer = suites.get("wer", {})
+    if "wer_pct" in wer:
+        metrics["wer_pct"] = wer["wer_pct"]
+
+    yt = suites.get("yt_commons", {})
+    if "wer_pct" in yt:
+        metrics["yt_commons_wer_pct"] = yt["wer_pct"]
+
+    tp = suites.get("throughput", {})
+    baseline = tp.get("single_gpu_baseline", {})
+    if "xrt" in baseline:
+        metrics["throughput_baseline_xrt"] = baseline["xrt"]
+    if "rtf" in baseline:
+        metrics["throughput_baseline_rtf"] = baseline["rtf"]
+    multigpu = tp.get("multi_gpu", {})
+    if "xrt" in multigpu:
+        metrics["throughput_multi_gpu_xrt"] = multigpu["xrt"]
+
+    reg = suites.get("regression", {})
+    if "drift_wer_pct" in reg:
+        metrics["regression_drift_wer_pct"] = reg["drift_wer_pct"]
+    if "drift_cer_pct" in reg:
+        metrics["regression_drift_cer_pct"] = reg["drift_cer_pct"]
+
+    if not metrics:
+        return
+
+    artemis_path = os.path.join(REPO_ROOT, "artemis_results.json")
+    with open(artemis_path, "w", encoding="utf-8") as f:
+        json.dump([metrics], f, indent=2)
+    print(f"Artemis metrics saved → {artemis_path}")
+
+
 def _print_summary(payload: dict):
     print("\n" + "=" * 64)
     print("SUMMARY")
@@ -519,6 +570,7 @@ def main():
         )
 
     _save_results(payload, override_path=args.output)
+    _write_artemis_metrics(payload)
     _print_summary(payload)
 
 
