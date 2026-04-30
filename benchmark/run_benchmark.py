@@ -272,10 +272,10 @@ def suite_yt_commons(
     transcriptions, references = [], []
 
     for i, row in tqdm(enumerate(dataset["test"]), desc="YouTube Commons"):
-        if not row["audio"]:
+        if row["audio"] is None or row["audio"].get("array") is None:
             continue
         result, _ = pipeline.transcribe(
-            row["audio"][0], batch_size=8, without_timestamps=True
+            row["audio"]["array"], batch_size=8, without_timestamps=True
         )
         transcriptions.append("".join(s.text for s in result))
         references.append(row["text"][0])

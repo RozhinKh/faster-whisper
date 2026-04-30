@@ -1,18 +1,79 @@
 import logging
+import os
 
 from threading import Thread
-from typing import Optional
+from typing import Callable, Optional
 
-from faster_whisper import WhisperModel
+from faster_whisper import BatchedInferencePipeline, WhisperModel
+
+BENCHMARK_DIR = os.path.dirname(os.path.abspath(__file__))
+BENCHMARK_AUDIO = os.path.join(BENCHMARK_DIR, "benchmark.m4a")
 
 model_path = "large-v3"
-model = WhisperModel(model_path, device="cuda")
+model = WhisperModel(model_path, device="cuda", compute_type="float16")
+pipeline = BatchedInferencePipeline(model)
 
 
 def inference():
-    segments, info = model.transcribe("benchmark.m4a", language="fr")
+    """No-arg callable used by speed_benchmark.py and memory_benchmark.py via timeit."""
+    segments, info = model.transcribe(BENCHMARK_AUDIO, language="fr")
     for segment in segments:
         print("[%.2fs -> %.2fs] %s" % (segment.start, segment.end, segment.text))
+
+
+def batched_inference(batch_size: int = 8, beam_size: int = 5):
+    """Inference via BatchedInferencePipeline — exposes batch_size and beam_size."""
+    segments, info = pipeline.transcribe(
+        BENCHMARK_AUDIO,
+        language="fr",
+        batch_size=batch_size,
+        beam_size=beam_size,
+    )
+    for segment in segments:
+        print("[%.2fs -> %.2fs] %s" % (segment.start, segment.end, segment.text))
+
+
+def make_inference_fn(
+    compute_type: str = "float16",
+    beam_size: int = 5,
+    batched: bool = False,
+    batch_size: int = 8,
+) -> Callable[[], None]:
+    """
+    Factory that returns a no-arg callable suitable for timeit sweeps.
+
+    Use this when you need to benchmark a specific (compute_type, beam_size,
+    batch_size) combination without mutating the module-level model.
+
+    Example — sweep compute_type:
+        for ct in ("float16", "int8_float16"):
+            fn = make_inference_fn(compute_type=ct)
+            runtimes = timeit.repeat(fn, repeat=3, number=10)
+    """
+    m = WhisperModel(model_path, device="cuda", compute_type=compute_type)
+    if batched:
+        p = BatchedInferencePipeline(m)
+
+        def _batched():
+            segs, _ = p.transcribe(
+                BENCHMARK_AUDIO,
+                language="fr",
+                batch_size=batch_size,
+                beam_size=beam_size,
+            )
+            for _ in segs:
+                pass
+
+        return _batched
+    else:
+        def _plain():
+            segs, _ = m.transcribe(
+                BENCHMARK_AUDIO, language="fr", beam_size=beam_size
+            )
+            for _ in segs:
+                pass
+
+        return _plain
 
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
