@@ -15,6 +15,7 @@ Usage:
 import argparse
 import json
 import os
+import sys
 import time
 
 import py3nvml.py3nvml as nvml
@@ -26,9 +27,13 @@ AUDIO = os.path.join(BENCHMARK_DIR, "benchmark.m4a")
 
 
 def run(model_path: str, compute_type: str, device: str, device_index: int) -> dict:
+    print("  loading model...")
+    sys.stdout.flush()
     model = WhisperModel(
         model_path, device=device, device_index=device_index, compute_type=compute_type
     )
+    print("  model loaded")
+    sys.stdout.flush()
 
     def _transcribe():
         segs, _ = model.transcribe(AUDIO, language="fr")
@@ -37,10 +42,12 @@ def run(model_path: str, compute_type: str, device: str, device_index: int) -> d
 
     # warmup — not timed
     print("  warming up...")
+    sys.stdout.flush()
     _transcribe()
 
     # single timed run
     print("  timing...")
+    sys.stdout.flush()
     t0 = time.perf_counter()
     _transcribe()
     elapsed = time.perf_counter() - t0
@@ -66,6 +73,7 @@ def run(model_path: str, compute_type: str, device: str, device_index: int) -> d
     print(f"  transcription time : {elapsed:.3f}s")
     if vram_used_mib:
         print(f"  VRAM used          : {vram_used_mib} MiB")
+    sys.stdout.flush()
 
     return result
 
