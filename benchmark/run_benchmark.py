@@ -82,6 +82,7 @@ def suite_speed(
     device: str,
     device_index,
     repeat: int,
+    number: int,
 ) -> dict:
     _section("SPEED  (benchmark.m4a, timeit)")
 
@@ -94,8 +95,11 @@ def suite_speed(
         for _ in segments:
             pass
 
-    runtimes = timeit.repeat(_run, repeat=repeat, number=10)
-    per_run = [round(r / 10, 3) for r in runtimes]
+    # warmup — excluded from timing
+    _run()
+
+    runtimes = timeit.repeat(_run, repeat=repeat, number=number)
+    per_run = [round(r / number, 3) for r in runtimes]
     min_s = min(per_run)
 
     print(f"  Per-run times (s) : {per_run}")
@@ -461,6 +465,10 @@ def main():
         "--repeat", type=int, default=3,
         help="[speed] timeit repeat count (default: 3)"
     )
+    parser.add_argument(
+        "--number", type=int, default=1,
+        help="[speed] timeit number of runs per repeat (default: 1 for GA loops, use 10 for stable baselines)"
+    )
 
     # ── memory ──
     parser.add_argument(
@@ -535,7 +543,7 @@ def main():
 
     if "speed" in suites:
         payload["suites"]["speed"] = suite_speed(
-            args.model, args.compute_type, args.device, device_index, args.repeat
+            args.model, args.compute_type, args.device, device_index, args.repeat, args.number
         )
 
     if "memory" in suites:
