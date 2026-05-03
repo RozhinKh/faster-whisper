@@ -4,7 +4,8 @@ Minimal benchmark for GA optimisation loops.
 Loads the model once, runs one warmup, one timed transcription,
 and writes a flat JSON that the GA can read directly.
 
-Target runtime: ~2 minutes on RTX 3090 + large-v3.
+Target runtime: ~2 minutes on RTX 3090 + large-v3 for the full
+13-minute benchmark file. Use --clip-seconds for shorter smoke runs.
 
 Usage:
     python benchmark/ga_benchmark.py \
@@ -17,16 +18,25 @@ import json
 import os
 import sys
 import time
-
-import py3nvml.py3nvml as nvml
-
-from faster_whisper import WhisperModel
+from typing import Optional
 
 BENCHMARK_DIR = os.path.dirname(os.path.abspath(__file__))
 AUDIO = os.path.join(BENCHMARK_DIR, "benchmark.m4a")
 
 
-def run(model_path: str, compute_type: str, device: str, device_index: int) -> dict:
+def run(
+    model_path: str,
+    compute_type: str,
+    device: str,
+    device_index: int,
+    language: str = "fr",
+    beam_size: int = 5,
+    clip_seconds: Optional[float] = None,
+) -> dict:
+    import py3nvml.py3nvml as nvml
+
+    from faster_whisper import WhisperModel
+
     print("  loading model...")
     sys.stdout.flush()
     model = WhisperModel(
@@ -35,24 +45,26 @@ def run(model_path: str, compute_type: str, device: str, device_index: int) -> d
     print("  model loaded")
     sys.stdout.flush()
 
+    transcribe_kwargs = {"language": language, "beam_size": beam_size}
+    if clip_seconds is not None:
+        transcribe_kwargs["clip_timestamps"] = f"0,{clip_seconds}"
+
     def _transcribe():
-        segs, _ = model.transcribe(AUDIO, language="fr")
+        segs, _ = model.transcribe(AUDIO, **transcribe_kwargs)
         for _ in segs:
             pass
 
-    # warmup — not timed
+    # Warmup run is not timed.
     print("  warming up...")
     sys.stdout.flush()
     _transcribe()
 
-    # single timed run
     print("  timing...")
     sys.stdout.flush()
     t0 = time.perf_counter()
     _transcribe()
     elapsed = time.perf_counter() - t0
 
-    # gpu memory snapshot
     vram_used_mib = None
     try:
         nvml.nvmlInit()
@@ -68,10 +80,14 @@ def run(model_path: str, compute_type: str, device: str, device_index: int) -> d
         "model": model_path,
         "compute_type": compute_type,
         "device_index": device_index,
+        "beam_size": beam_size,
+        "language": language,
+        "audio_seconds": clip_seconds,
+        "benchmark_mode": "smoke" if clip_seconds is not None else "full",
     }
 
     print(f"  transcription time : {elapsed:.3f}s")
-    if vram_used_mib:
+    if vram_used_mib is not None:
         print(f"  VRAM used          : {vram_used_mib} MiB")
     sys.stdout.flush()
 
@@ -84,11 +100,28 @@ if __name__ == "__main__":
     parser.add_argument("--compute-type", default="float16")
     parser.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
     parser.add_argument("--device-index", type=int, default=0)
+    parser.add_argument("--language", default="fr")
+    parser.add_argument("--beam-size", type=int, default=5)
+    parser.add_argument(
+        "--clip-seconds",
+        type=float,
+        default=None,
+        help="Only transcribe the first N seconds for a fast smoke benchmark.",
+    )
     parser.add_argument("--output", default="artemis_results.json")
     args = parser.parse_args()
 
-    result = run(args.model, args.compute_type, args.device, args.device_index)
+    result = run(
+        args.model,
+        args.compute_type,
+        args.device,
+        args.device_index,
+        language=args.language,
+        beam_size=args.beam_size,
+        clip_seconds=args.clip_seconds,
+    )
 
-    with open(args.output, "w") as f:
+    with open(args.output, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2)
-    print(f"  results → {args.output}")
+        f.write("\n")
+    print(f"  results -> {args.output}")
