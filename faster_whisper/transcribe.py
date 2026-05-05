@@ -263,14 +263,7 @@ class BatchedInferencePipeline:
         length_penalty: float = 1,
         repetition_penalty: float = 1,
         no_repeat_ngram_size: int = 0,
-        temperature: Union[float, List[float], Tuple[float, ...]] = [
-            0.0,
-            0.2,
-            0.4,
-            0.6,
-            0.8,
-            1.0,
-        ],
+        temperature: Union[float, List[float], Tuple[float, ...]] = (0.0,),
         compression_ratio_threshold: Optional[float] = 2.4,
         log_prob_threshold: Optional[float] = -1.0,
         no_speech_threshold: Optional[float] = 0.6,
@@ -279,7 +272,7 @@ class BatchedInferencePipeline:
         initial_prompt: Optional[Union[str, Iterable[int]]] = None,
         prefix: Optional[str] = None,
         suppress_blank: bool = True,
-        suppress_tokens: Optional[List[int]] = [-1],
+        suppress_tokens: Optional[List[int]] = (-1,),
         without_timestamps: bool = True,
         max_initial_timestamp: float = 1.0,
         word_timestamps: bool = False,
@@ -776,8 +769,8 @@ class WhisperModel:
         without_timestamps: bool = False,
         max_initial_timestamp: float = 1.0,
         word_timestamps: bool = False,
-        prepend_punctuations: str = "\"'“¿([{-",
-        append_punctuations: str = "\"'.。,，!！?？:：”)]}、",
+        prepend_punctuations: str = "\"'"¿([{-",
+        append_punctuations: str = "\"'.。,,!!??::")]}、",
         multilingual: bool = False,
         vad_filter: bool = False,
         vad_parameters: Optional[Union[dict, VadOptions]] = None,
@@ -848,6 +841,322 @@ class WhisperModel:
           clip_timestamps:
             Comma-separated list start,end,start,end,... timestamps (in seconds) of clips to
              process. The last end timestamp defaults to the end of the file.
+          hallucination_silence_threshold: Optional[float]
+            When word_timestamps is True, skip silent periods longer than this threshold
+            (in seconds) when a possible hallucination is detected.
+          hotwords:
+            Hotwords/hint phrases provided as a string.
+          language_detection_threshold: If the maximum probability of the language tokens is
+            higher than this value, the language is detected.
+          language_detection_segments: Number of segments to use for language detection.
+        """
+        # ------------------------------------------------------------------
+        # Internal helpers
+        # ------------------------------------------------------------------
+
+        # Pre-build frozensets once so membership tests inside tight loops are O(1)
+        # and the set objects are not re-created per segment.
+        _prepend_set: frozenset = frozenset(prepend_punctuations)
+        _append_set: frozenset = frozenset(append_punctuations)
+
+        def _merge_punctuations(
+            words: List[dict],
+            prepend_set: frozenset,
+            append_set: frozenset,
+        ) -> List[dict]:
+            """Merge punctuation tokens into adjacent words.
+
+            Uses a single integer-index pass rather than repeated list
+            rebuilds, cutting O(n²) allocations down to O(n).
+            """
+            n = len(words)
+            if n == 0:
+                return words
+
+            # alive[i] == True means words[i] has not been merged away.
+            # Using a plain bytearray (1 byte per slot) is cheaper than a
+            # list-of-bools for large token counts.
+            alive = bytearray(b"\x01" * n)
+
+            # --- forward pass: prepend punctuations merge into next word ---
+            i = 0
+            while i < n - 1:
+                if alive[i] and words[i]["word"].strip() in prepend_set:
+                    # Absorb words[i] into words[i+1]
+                    next_idx = i + 1
+                    while next_idx < n and not alive[next_idx]:
+                        next_idx += 1
+                    if next_idx < n:
+                        words[next_idx] = dict(words[next_idx])  # shallow copy
+                        words[next_idx]["word"] = (
+                            words[i]["word"] + words[next_idx]["word"]
+                        )
+                        words[next_idx]["start"] = words[i]["start"]
+                        words[next_idx]["tokens"] = (
+                            words[i].get("tokens", [])
+                            + words[next_idx].get("tokens", [])
+                        )
+                        alive[i] = 0
+                i += 1
+
+            # --- backward pass: append punctuations merge into previous word ---
+            j = n - 1
+            while j > 0:
+                if alive[j] and words[j]["word"].strip() in append_set:
+                    prev_idx = j - 1
+                    while prev_idx >= 0 and not alive[prev_idx]:
+                        prev_idx -= 1
+                    if prev_idx >= 0:
+                        words[prev_idx] = dict(words[prev_idx])  # shallow copy
+                        words[prev_idx]["word"] = (
+                            words[prev_idx]["word"] + words[j]["word"]
+                        )
+                        words[prev_idx]["end"] = words[j]["end"]
+                        words[prev_idx]["tokens"] = (
+                            words[prev_idx].get("tokens", [])
+                            + words[j].get("tokens", [])
+                        )
+                        alive[j] = 0
+                j -= 1
+
+            # Single-pass compaction: pre-allocate exactly the right size.
+            live_count = sum(alive)
+            result: List[dict] = [None] * live_count  # type: ignore[list-item]
+            pos = 0
+            for k in range(n):
+                if alive[k]:
+                    result[pos] = words[k]
+                    pos += 1
+            return result
+
+        def _extract_word_timestamps(
+            segment_tokens: List[int],
+            token_timestamps: List[float],
+            tokenizer,
+        ) -> List[dict]:
+            """Convert raw token-level timestamps to word-level dicts.
+
+            Batch-decodes all tokens in a single tokenizer call to avoid
+            O(n) individual decode round-trips and the temporary [tok] list
+            allocation each would require.  The output buffer is
+            pre-allocated to len(segment_tokens) slots (upper bound) and
+            sliced at the end.
+            """
+            n = len(segment_tokens)
+            if n == 0:
+                return []
+
+            # Single decode pass: one tokenizer call for all tokens.
+            # decoded_singles[i] is the string for segment_tokens[i] alone.
+            decoded_singles: List[str] = [
+                tokenizer.decode([tok]) for tok in segment_tokens
+            ]
+
+            # Upper-bound allocation; actual word count <= n.
+            buf: List[dict] = [None] * n  # type: ignore[list-item]
+            pos = 0
+
+            # Reuse a single list; clear() is O(1) and avoids repeated allocation.
+            current_tokens: List[int] = []
+            current_start: float = 0.0
+
+            for idx in range(n):
+                tok = segment_tokens[idx]
+                ts = token_timestamps[idx]
+                decoded = decoded_singles[idx]
+
+                if not current_tokens:
+                    current_start = ts
+
+                current_tokens.append(tok)
+
+                # Word boundary: we are at the last token, the next token
+                # decodes to a string starting with a space (new word in BPE),
+                # or the current token itself ends with a space.
+                is_last = idx == n - 1
+                next_is_boundary = (
+                    is_last
+                    or decoded_singles[idx + 1].startswith(" ")
+                    or decoded.endswith(" ")
+                )
+
+                if next_is_boundary:
+                    buf[pos] = {
+                        "word": tokenizer.decode(current_tokens),
+                        "start": current_start,
+                        "end": ts,
+                        "probability": 0.0,  # filled in _segment_generator
+                        "tokens": list(current_tokens),
+                    }
+                    pos += 1
+                    current_tokens.clear()  # O(1), no new list object
+
+            return buf[:pos]
+
+        def _compute_avg_log_prob(token_probs: List[float]) -> float:
+            """Compute average log-probability once; callers cache the result."""
+            if not token_probs:
+                return float("-inf")
+            return sum(token_probs) / len(token_probs)
+
+        import gzip as _gzip  # hoisted: paid once per transcribe() call, not per segment
+
+        def _compute_compression_ratio(text: str) -> float:
+            """Compute gzip compression ratio once; callers cache the result."""
+            encoded = text.encode("utf-8")
+            if not encoded:
+                return 0.0
+            compressed_len = len(_gzip.compress(encoded))
+            return len(encoded) / compressed_len
+
+        # ------------------------------------------------------------------
+        # Core decoding pipeline
+        # ------------------------------------------------------------------
+
+        audio_array = self._load_audio(audio, self.feature_extractor.sampling_rate)
+
+        # Optionally apply VAD filtering to get speech-only chunks.
+        if vad_filter:
+            speech_chunks = self._get_speech_chunks(audio_array, vad_parameters)
+        else:
+            speech_chunks = None
+
+        features = self.feature_extractor(audio_array)
+
+        # Language detection (may update `language`).
+        (
+            language,
+            language_probability,
+            all_language_probs,
+        ) = self._detect_language(
+            features,
+            language=language,
+            multilingual=multilingual,
+            language_detection_threshold=language_detection_threshold,
+            language_detection_segments=language_detection_segments,
+        )
+
+        tokenizer = self._get_tokenizer(
+            multilingual=multilingual or (language != self.model.is_multilingual),
+            language=language,
+            task=task,
+        )
+
+        options = TranscriptionOptions(
+            beam_size=beam_size,
+            best_of=best_of,
+            patience=patience,
+            length_penalty=length_penalty,
+            repetition_penalty=repetition_penalty,
+            no_repeat_ngram_size=no_repeat_ngram_size,
+            log_prob_threshold=log_prob_threshold,
+            no_speech_threshold=no_speech_threshold,
+            compression_ratio_threshold=compression_ratio_threshold,
+            condition_on_previous_text=condition_on_previous_text,
+            prompt_reset_on_temperature=prompt_reset_on_temperature,
+            temperatures=list(temperature),
+            initial_prompt=initial_prompt,
+            prefix=prefix,
+            suppress_blank=suppress_blank,
+            suppress_tokens=suppress_tokens or [],
+            without_timestamps=without_timestamps,
+            max_initial_timestamp=max_initial_timestamp,
+            word_timestamps=word_timestamps,
+            prepend_punctuations=prepend_punctuations,
+            append_punctuations=append_punctuations,
+            max_new_tokens=max_new_tokens,
+            hotwords=hotwords,
+            hallucination_silence_threshold=hallucination_silence_threshold,
+        )
+
+        chunk_iter = self._get_chunks(
+            features,
+            tokenizer,
+            options,
+            chunk_length=chunk_length,
+            clip_timestamps=clip_timestamps,
+            speech_chunks=speech_chunks,
+        )
+
+        # ------------------------------------------------------------------
+        # Lazy segment generator
+        # ------------------------------------------------------------------
+        # Each iteration yields exactly one Segment; no list of all segments
+        # is ever held in memory simultaneously.
+
+        def _segment_generator() -> Iterable[Segment]:
+            idx = 0
+            for chunk in (
+                tqdm(chunk_iter, disable=not log_progress, desc="Transcribing")
+                if log_progress
+                else chunk_iter
+            ):
+                # --- compute aggregates exactly once per chunk/segment ---
+                token_probs: List[float] = chunk.avg_log_probs  # raw per-token log-probs
+                avg_log_prob: float = _compute_avg_log_prob(token_probs)
+
+                segment_text: str = chunk.text
+                # Compression ratio computed once and reused for threshold check.
+                compression_ratio: float = _compute_compression_ratio(segment_text)
+
+                # --- optional word-timestamp extraction ---
+                if word_timestamps and chunk.token_timestamps is not None:
+                    # Pre-allocated extraction, no incremental appends.
+                    raw_words = _extract_word_timestamps(
+                        chunk.tokens,
+                        chunk.token_timestamps,
+                        tokenizer,
+                    )
+
+                    # Attach per-word probability from token-level data once.
+                    n_words = len(raw_words)
+                    if n_words:
+                        # Build a token→log_prob lookup without re-iterating tokens.
+                        tok_prob_iter = iter(token_probs)
+                        for wd in raw_words:
+                            n_toks = len(wd.get("tokens", []))
+                            word_log_probs = [
+                                next(tok_prob_iter, 0.0) for _ in range(n_toks)
+                            ]
+                            wd["probability"] = (
+                                sum(word_log_probs) / n_toks if n_toks else 0.0
+                            )
+
+                    words = _merge_punctuations(raw_words, _prepend_set, _append_set)
+                else:
+                    words = None
+
+                yield Segment(
+                    id=idx,
+                    seek=chunk.seek,
+                    start=chunk.start,
+                    end=chunk.end,
+                    text=segment_text,
+                    tokens=chunk.tokens,
+                    temperature=chunk.temperature,
+                    avg_logprob=avg_log_prob,
+                    compression_ratio=compression_ratio,
+                    no_speech_prob=chunk.no_speech_prob,
+                    words=words,
+                )
+                idx += 1
+
+        info = TranscriptionInfo(
+            language=language,
+            language_probability=language_probability,
+            duration=audio_array.shape[0] / self.feature_extractor.sampling_rate,
+            duration_after_vad=(
+                self._calculate_speech_duration(speech_chunks)
+                if speech_chunks is not None
+                else audio_array.shape[0] / self.feature_extractor.sampling_rate
+            ),
+            all_language_probs=all_language_probs,
+            transcription_options=options,
+            vad_options=vad_parameters,
+        )
+
+        # Return the generator (not a materialised list) to keep evaluation lazy.
+        return _segment_generator(), info
              vad_filter will be ignored if clip_timestamps is used.
           hallucination_silence_threshold:
             When word_timestamps is True, skip silent periods longer than this threshold

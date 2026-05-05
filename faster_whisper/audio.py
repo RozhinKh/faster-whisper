@@ -7,7 +7,6 @@ However, the API is quite low-level so we need to manipulate audio frames direct
 """
 
 import gc
-import io
 import itertools
 
 from typing import BinaryIO, Union
@@ -40,8 +39,7 @@ def decode_audio(
         rate=sampling_rate,
     )
 
-    raw_buffer = io.BytesIO()
-    dtype = None
+    arrays = []
 
     with av.open(input_file, mode="r", metadata_errors="ignore") as container:
         frames = container.decode(audio=0)
@@ -50,9 +48,7 @@ def decode_audio(
         frames = _resample_frames(frames, resampler)
 
         for frame in frames:
-            array = frame.to_ndarray()
-            dtype = array.dtype
-            raw_buffer.write(array)
+            arrays.append(frame.to_ndarray())
 
     # It appears that some objects related to the resampler are not freed
     # unless the garbage collector is manually run.
@@ -63,10 +59,12 @@ def decode_audio(
     del resampler
     gc.collect()
 
-    audio = np.frombuffer(raw_buffer.getbuffer(), dtype=dtype)
-
-    # Convert s16 back to f32.
-    audio = audio.astype(np.float32) / 32768.0
+    # Concatenate all s16 frames and convert to f32 in a single pass.
+    # Each frame is shape (1, n_samples); concatenate along axis=1 then
+    # flatten to a 1-D array.  dtype=np.float32 performs the conversion
+    # inside NumPy's C loop, avoiding a separate astype allocation.
+    audio = np.concatenate(arrays, axis=1, dtype=np.float32).ravel()
+    audio /= 32768.0
 
     if split_stereo:
         left_channel = audio[0::2]
@@ -113,7 +111,9 @@ def pad_or_trim(array, length: int = 3000, *, axis: int = -1):
     Pad or trim the Mel features array to 3000, as expected by the encoder.
     """
     if array.shape[axis] > length:
-        array = array.take(indices=range(length), axis=axis)
+        slices = [slice(None)] * array.ndim
+        slices[axis] = slice(None, length)
+        array = array[tuple(slices)]
 
     if array.shape[axis] < length:
         pad_widths = [(0, 0)] * array.ndim
