@@ -776,8 +776,8 @@ class WhisperModel:
         without_timestamps: bool = False,
         max_initial_timestamp: float = 1.0,
         word_timestamps: bool = False,
-        prepend_punctuations: str = "\"'“¿([{-",
-        append_punctuations: str = "\"'.。,，!！?？:：”)]}、",
+        prepend_punctuations: str = "\"'"¿([{-",
+        append_punctuations: str = "\"'.。,,!!??::")]}、",
         multilingual: bool = False,
         vad_filter: bool = False,
         vad_parameters: Optional[Union[dict, VadOptions]] = None,
@@ -848,6 +848,7 @@ class WhisperModel:
           clip_timestamps:
             Comma-separated list start,end,start,end,... timestamps (in seconds) of clips to
              process. The last end timestamp defaults to the end of the file.
+        """
              vad_filter will be ignored if clip_timestamps is used.
           hallucination_silence_threshold:
             When word_timestamps is True, skip silent periods longer than this threshold
