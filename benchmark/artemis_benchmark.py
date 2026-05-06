@@ -46,8 +46,14 @@ def _write_summary(profile_dir: str, result: dict, output_path: str) -> None:
         f"- Device index: `{result['device_index']}`",
         f"- Benchmark mode: `{result['benchmark_mode']}`",
         f"- Audio seconds: `{result['audio_seconds']}`",
-        f"- Speed (s): `{result['speed_min_s']}`",
+        f"- Median speed (s): `{result['speed_min_s']}`",
+        f"- P95 speed (s): `{result['speed_p95_s']}`",
+        f"- Speed stddev (ms): `{result['speed_stddev_ms']}`",
+        f"- Throughput (x realtime): `{result['throughput_x']}`",
         f"- VRAM used (MiB): `{result['vram_used_mib']}`",
+        f"- Num segments: `{result['num_segments']}`",
+        f"- Transcript chars: `{result['transcript_chars']}`",
+        f"- Transcript SHA1: `{result['transcript_sha1']}`",
     ]
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
@@ -74,6 +80,12 @@ def main() -> None:
         help="First N seconds to transcribe for quick Artemis smoke tests.",
     )
     parser.add_argument(
+        "--timed-runs",
+        type=int,
+        default=int(_env("BENCHMARK_TIMED_RUNS", "3")),
+        help="Number of timed runs after warmup. Median is written as speed_min_s.",
+    )
+    parser.add_argument(
         "--full-audio",
         action="store_true",
         help="Run on the full benchmark.m4a instead of a clipped smoke test.",
@@ -91,6 +103,7 @@ def main() -> None:
         language=args.language,
         beam_size=args.beam_size,
         clip_seconds=clip_seconds,
+        timed_runs=args.timed_runs,
     )
 
     with open(args.output, "w", encoding="utf-8") as f:
