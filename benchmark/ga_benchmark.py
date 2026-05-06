@@ -130,12 +130,12 @@ def run(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Minimal GA benchmark")
     parser.add_argument("--model", default="large-v3")
-    parser.add_argument("--compute-type", default="float16")
+    parser.add_argument("--compute-type", default="int8_float16")
     parser.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
     parser.add_argument("--device-index", type=int, default=0)
     parser.add_argument("--language", default="fr")
     parser.add_argument("--beam-size", type=int, default=1)
-    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument(
         "--clip-seconds",
         type=float,
