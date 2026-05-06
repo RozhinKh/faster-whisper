@@ -238,14 +238,22 @@ def collect_chunks(
     current_segments = []
     current_duration = 0
     total_duration = 0
-    current_audio = np.array([], dtype=np.float32)
+    # Collect slices into a list; concatenate once per output chunk instead of
+    # once per input chunk.  The naive approach copies O(n²) samples in total
+    # because every np.concatenate allocates a fresh array and copies all prior
+    # data.  Deferring to a single np.concatenate reduces that to O(n).
+    current_slices: List[np.ndarray] = []
 
     for chunk in chunks:
         if (
             current_duration + chunk["end"] - chunk["start"]
             > max_duration * sampling_rate
         ):
-            audio_chunks.append(current_audio)
+            audio_chunks.append(
+                np.concatenate(current_slices)
+                if current_slices
+                else np.array([], dtype=np.float32)
+            )
             chunk_metadata = {
                 "offset": total_duration / sampling_rate,
                 "duration": current_duration / sampling_rate,
@@ -254,19 +262,19 @@ def collect_chunks(
             total_duration += current_duration
             chunks_metadata.append(chunk_metadata)
 
-            current_segments = []
-
-            current_audio = audio[chunk["start"] : chunk["end"]]
+            current_segments = [chunk]
+            current_slices = [audio[chunk["start"] : chunk["end"]]]
             current_duration = chunk["end"] - chunk["start"]
         else:
             current_segments.append(chunk)
-            current_audio = np.concatenate(
-                (current_audio, audio[chunk["start"] : chunk["end"]])
-            )
-
+            current_slices.append(audio[chunk["start"] : chunk["end"]])
             current_duration += chunk["end"] - chunk["start"]
 
-    audio_chunks.append(current_audio)
+    audio_chunks.append(
+        np.concatenate(current_slices)
+        if current_slices
+        else np.array([], dtype=np.float32)
+    )
 
     chunk_metadata = {
         "offset": total_duration / sampling_rate,
@@ -310,8 +318,15 @@ class SpeechTimestampsMap:
 
     def get_chunk_index(self, time: float, is_end: bool = False) -> int:
         sample = int(time * self.sampling_rate)
-        if sample in self.chunk_end_sample and is_end:
-            return self.chunk_end_sample.index(sample)
+
+        if is_end:
+            # bisect_left finds the leftmost position where sample could be
+            # inserted to keep the list sorted.  If chunk_end_sample[idx] ==
+            # sample the sample lands exactly on a chunk boundary, which is the
+            # condition the original code tested with a linear `.index()` call.
+            idx = bisect.bisect_left(self.chunk_end_sample, sample)
+            if idx < len(self.chunk_end_sample) and self.chunk_end_sample[idx] == sample:
+                return idx
 
         return min(
             bisect.bisect(self.chunk_end_sample, sample),
@@ -340,6 +355,51 @@ class SileroVADModel:
         opts.intra_op_num_threads = 1
         opts.enable_cpu_mem_arena = False
         opts.log_severity_level = 4
+
+        self.session = onnxruntime.InferenceSession(
+            path,
+            providers=["CPUExecutionProvider"],
+            sess_options=opts,
+        )
+
+    def __call__(
+        self, audio: np.ndarray, num_samples: int = 512, context_size_samples: int = 64
+    ):
+        assert audio.ndim == 1, "Input should be a 1D array"
+        assert (
+            audio.shape[0] % num_samples == 0
+        ), "Input size should be a multiple of num_samples"
+
+        h = np.zeros((1, 1, 128), dtype="float32")
+        c = np.zeros((1, 1, 128), dtype="float32")
+        batched_audio = audio.reshape(-1, num_samples)
+        num_segments = batched_audio.shape[0]
+
+        # Pre-allocate the full output buffer (context + audio) in one shot.
+        # This avoids the roll + concatenate sequence which creates three
+        # short-lived intermediate arrays on every call.
+        buf = np.empty(
+            (num_segments, context_size_samples + num_samples), dtype=np.float32
+        )
+        # Segment 0 gets zero context; all others inherit the tail of the previous segment.
+        buf[0, :context_size_samples] = 0.0
+        if num_segments > 1:
+            buf[1:, :context_size_samples] = batched_audio[:-1, -context_size_samples:]
+        buf[:, context_size_samples:] = batched_audio
+        batched_audio = buf
+
+        encoder_batch_size = 10000
+        outputs = []
+        for i in range(0, num_segments, encoder_batch_size):
+            output, h, c = self.session.run(
+                None,
+                {"input": batched_audio[i : i + encoder_batch_size], "h": h, "c": c},
+            )
+            outputs.append(output)
+
+        out = np.concatenate(outputs, axis=0)
+
+        return out
 
         self.session = onnxruntime.InferenceSession(
             path,

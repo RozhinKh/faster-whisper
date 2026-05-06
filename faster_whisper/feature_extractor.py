@@ -20,6 +20,7 @@ class FeatureExtractor:
         self.mel_filters = self.get_mel_filters(
             sampling_rate, n_fft, n_mels=feature_size
         ).astype("float32")
+        self.hann_window = np.hanning(n_fft + 1)[:-1].astype("float32")
 
     @staticmethod
     def get_mel_filters(sr, n_fft, n_mels=128):
@@ -55,8 +56,14 @@ class FeatureExtractor:
         lower = -ramps[:-2] / np.expand_dims(fdiff[:-1], axis=1)
         upper = ramps[2:] / np.expand_dims(fdiff[1:], axis=1)
 
-        # Intersect them with each other and zero, vectorized across all i
-        weights = np.maximum(np.zeros_like(lower), np.minimum(lower, upper))
+        # Reuse `lower` in-place to avoid two extra heap allocations:
+        #   np.minimum writes into lower (replaces the separate minimum result),
+        #   np.maximum then clamps to zero in the same buffer.
+        # Original: np.maximum(np.zeros_like(lower), np.minimum(lower, upper))
+        # created zeros_like + minimum output + maximum output = 3 allocations.
+        np.minimum(lower, upper, out=lower)
+        np.maximum(lower, 0.0, out=lower)
+        weights = lower
 
         # Slaney-style mel is scaled to be approx constant energy per channel
         enorm = 2.0 / (freqs[2 : n_mels + 2] - freqs[:n_mels])
@@ -113,7 +120,7 @@ class FeatureExtractor:
         else:
             input_array_1d = False
 
-        # Center padding if required
+        # Center padding if required — single allocation, explicit dtype preserved
         if center:
             pad_amount = n_fft // 2
             input_array = np.pad(
@@ -156,8 +163,8 @@ class FeatureExtractor:
         # Calculate the number of frames
         n_frames = 1 + (length - n_fft) // hop_length
 
-        # Time to columns
-        input_array = np.lib.stride_tricks.as_strided(
+        # Build a strided view over the (possibly padded) signal — no copy yet
+        strided = np.lib.stride_tricks.as_strided(
             input_array,
             (batch, n_frames, n_fft),
             (
@@ -167,26 +174,30 @@ class FeatureExtractor:
             ),
         )
 
+        # Apply window into a pre-allocated contiguous buffer to avoid a silent
+        # temporary: `strided * window_` would allocate batch×n_frames×n_fft
+        # elements implicitly; np.multiply with out= reuses that one buffer.
         if window_ is not None:
-            input_array = input_array * window_
+            frames = np.empty((batch, n_frames, n_fft), dtype=input_array.dtype)
+            np.multiply(strided, window_, out=frames)
+        else:
+            # np.fft requires a contiguous array; force a single copy here
+            frames = np.ascontiguousarray(strided)
 
         # FFT and transpose
         complex_fft = input_is_complex
         onesided = onesided if onesided is not None else not complex_fft
 
-        if normalized:
-            norm = "ortho"
-        else:
-            norm = None
+        norm = "ortho" if normalized else None
 
         if complex_fft:
             if onesided:
                 raise ValueError(
                     "Cannot have onesided output if window or input is complex"
                 )
-            output = np.fft.fft(input_array, n=n_fft, axis=-1, norm=norm)
+            output = np.fft.fft(frames, n=n_fft, axis=-1, norm=norm)
         else:
-            output = np.fft.rfft(input_array, n=n_fft, axis=-1, norm=norm)
+            output = np.fft.rfft(frames, n=n_fft, axis=-1, norm=norm)
 
         output = output.transpose((0, 2, 1))
 
@@ -204,27 +215,71 @@ class FeatureExtractor:
             self.n_samples = chunk_length * self.sampling_rate
             self.nb_max_frames = self.n_samples // self.hop_length
 
-        if waveform.dtype is not np.float32:
-            waveform = waveform.astype(np.float32)
-
-        if padding:
-            waveform = np.pad(waveform, (0, padding))
-
-        window = np.hanning(self.n_fft + 1)[:-1].astype("float32")
+        # Combine dtype conversion + zero-padding into a single allocation.
+        # Previously: astype (copy, N×4 B) then np.pad (copy, (N+pad)×4 B).
+        # Now: one buffer of the final size; waveform is copied in once.
+        padded_length = len(waveform) + (padding if padding else 0)
+        if waveform.dtype == np.float32 and not padding:
+            # No dtype change, no padding — use as-is (zero extra allocations)
+            processed = waveform
+        else:
+            processed = np.zeros(padded_length, dtype=np.float32)
+            if waveform.dtype == np.float32:
+                processed[: len(waveform)] = waveform
+            else:
+                # casting='unsafe' avoids a hidden astype temporary
+                np.copyto(processed[: len(waveform)], waveform, casting="unsafe")
+            # tail is already zeroed by np.zeros — matches np.pad constant mode
 
         stft = self.stft(
-            waveform,
+            processed,
             self.n_fft,
             self.hop_length,
-            window=window,
+            window=self.hann_window,
             return_complex=True,
-        ).astype("complex64")
-        magnitudes = np.abs(stft[..., :-1]) ** 2
+        )
+        stft_trimmed = stft[..., :-1]  # view — no copy
 
-        mel_spec = self.mel_filters @ magnitudes
+        # Compute the power spectrum directly into a float32 buffer.
+        #
+        # Why not `stft_trimmed.real ** 2 + stft_trimmed.imag ** 2`?
+        #   • `** 2` always allocates a new array (it is never in-place).
+        #   • The implicit temporary for `imag ** 2` inside `+=` is a second
+        #     silent allocation of the same shape.
+        #   • If rfft returned complex128 (NumPy default when input is float32),
+        #     both squares land in float64, then a third copy is made by astype.
+        #
+        # Instead:
+        #   1. Pre-allocate `magnitudes` as float32 once.
+        #   2. np.multiply with out= + casting='unsafe' squares the real part
+        #      *and* casts to float32 in a single write pass — no intermediate.
+        #   3. Reuse one scratch buffer for imag², then accumulate in-place.
+        #      Total allocations: 2 × (n_bins × n_frames × 4 B) instead of
+        #      up to 4 × (n_bins × n_frames × 8 B) for the float64 path.
+        n_bins, n_frames = stft_trimmed.shape
+        magnitudes = np.empty((n_bins, n_frames), dtype=np.float32)
+        np.multiply(stft_trimmed.real, stft_trimmed.real, out=magnitudes, casting="unsafe")
+        _imag_sq = np.empty((n_bins, n_frames), dtype=np.float32)
+        np.multiply(stft_trimmed.imag, stft_trimmed.imag, out=_imag_sq, casting="unsafe")
+        magnitudes += _imag_sq
+        del _imag_sq  # release scratch before the matmul allocation below
 
-        log_spec = np.log10(np.clip(mel_spec, a_min=1e-10, a_max=None))
-        log_spec = np.maximum(log_spec, log_spec.max() - 8.0)
-        log_spec = (log_spec + 4.0) / 4.0
+        # Pre-allocate the output buffer and use np.dot's `out` parameter to
+        # avoid the hidden allocation that `@` always incurs.  magnitudes is
+        # already float32 (guaranteed above), so the matmul stays in float32
+        # precision and BLAS dispatches to sgemm without an upcast copy.
+        mel_spec = np.empty(
+            (self.mel_filters.shape[0], magnitudes.shape[-1]), dtype=np.float32
+        )
+        np.dot(self.mel_filters, magnitudes, out=mel_spec)
+
+        # All subsequent operations are in-place (no extra allocations).
+        np.maximum(mel_spec, 1e-10, out=mel_spec)
+        log_spec = np.log10(mel_spec, out=mel_spec)
+        np.maximum(log_spec, log_spec.max() - 8.0, out=log_spec)
+        log_spec += 4.0
+        # Multiply by the reciprocal instead of dividing: the multiply ufunc
+        # path is cheaper than the divide ufunc path for the same in-place op.
+        log_spec *= 0.25
 
         return log_spec
