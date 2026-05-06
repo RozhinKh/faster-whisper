@@ -68,10 +68,32 @@ def run(
             "transcript": transcript,
         }
 
+    def _measure_preprocessing():
+        """Time the CPU preprocessing pipeline independently of GPU inference."""
+        from faster_whisper.audio import decode_audio
+        from faster_whisper.vad import get_speech_timestamps
+        from faster_whisper.feature_extractor import FeatureExtractor
+
+        audio = decode_audio(AUDIO)
+        if clip_seconds is not None:
+            audio = audio[:int(clip_seconds * 16000)]
+
+        t0 = time.perf_counter()
+        _ = get_speech_timestamps(audio, sampling_rate=16000, device_index=device_index)
+        fe = FeatureExtractor()
+        chunk = audio[:16000 * 30] if len(audio) > 16000 * 30 else audio
+        _ = fe(chunk)
+        return time.perf_counter() - t0
+
     # Warmup run is not timed.
     print("  warming up...")
     sys.stdout.flush()
     warmup = _transcribe()
+
+    print("  timing preprocessing...")
+    sys.stdout.flush()
+    preprocessing_timings = [_measure_preprocessing() for _ in range(3)]
+    preprocessing_time_s = statistics.median(preprocessing_timings)
 
     print("  timing...")
     sys.stdout.flush()
@@ -101,6 +123,7 @@ def run(
         "speed_min_s": round(elapsed, 3),
         "speed_p95_s": round(max(timings), 3),
         "speed_stddev_ms": round(statistics.pstdev(timings) * 1000, 3),
+        "preprocessing_time_s": round(preprocessing_time_s, 3),
         "timed_runs": timed_runs,
         "vram_used_mib": vram_used_mib,
         "throughput_x": round(throughput_x, 3) if throughput_x is not None else None,
@@ -119,6 +142,7 @@ def run(
     }
 
     print(f"  transcription time : {elapsed:.3f}s")
+    print(f"  preprocessing time : {preprocessing_time_s:.3f}s")
     print(f"  throughput         : {throughput_x:.3f}x")
     if vram_used_mib is not None:
         print(f"  VRAM used          : {vram_used_mib} MiB")

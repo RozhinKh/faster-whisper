@@ -1,5 +1,12 @@
 import numpy as np
 
+try:
+    import scipy.fft as _scipy_fft
+    _FFT_WORKERS = -1
+except ImportError:
+    _scipy_fft = None
+    _FFT_WORKERS = None
+
 
 class FeatureExtractor:
     def __init__(
@@ -195,9 +202,15 @@ class FeatureExtractor:
                 raise ValueError(
                     "Cannot have onesided output if window or input is complex"
                 )
-            output = np.fft.fft(frames, n=n_fft, axis=-1, norm=norm)
+            if _scipy_fft is not None:
+                output = _scipy_fft.fft(frames, n=n_fft, axis=-1, norm=norm, workers=_FFT_WORKERS)
+            else:
+                output = np.fft.fft(frames, n=n_fft, axis=-1, norm=norm)
         else:
-            output = np.fft.rfft(frames, n=n_fft, axis=-1, norm=norm)
+            if _scipy_fft is not None:
+                output = _scipy_fft.rfft(frames, n=n_fft, axis=-1, norm=norm, workers=_FFT_WORKERS)
+            else:
+                output = np.fft.rfft(frames, n=n_fft, axis=-1, norm=norm)
 
         output = output.transpose((0, 2, 1))
 

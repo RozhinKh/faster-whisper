@@ -52,6 +52,7 @@ def get_speech_timestamps(
     audio: np.ndarray,
     vad_options: Optional[VadOptions] = None,
     sampling_rate: int = 16000,
+    device_index: int = 0,
     **kwargs,
 ) -> List[dict]:
     """This method is used for splitting long audios into speech chunks using silero VAD.
@@ -59,7 +60,8 @@ def get_speech_timestamps(
     Args:
       audio: One dimensional float array.
       vad_options: Options for VAD processing.
-      sampling rate: Sampling rate of the audio.
+      sampling_rate: Sampling rate of the audio.
+      device_index: CUDA device index for GPU-accelerated VAD (if available).
       kwargs: VAD options passed as keyword arguments for backward compatibility.
 
     Returns:
@@ -90,7 +92,7 @@ def get_speech_timestamps(
 
     audio_length_samples = len(audio)
 
-    model = get_vad_model()
+    model = get_vad_model(device_index)
 
     padded_audio = np.pad(
         audio, (0, window_size_samples - audio.shape[0] % window_size_samples)
@@ -335,14 +337,14 @@ class SpeechTimestampsMap:
 
 
 @functools.lru_cache
-def get_vad_model():
-    """Returns the VAD model instance."""
+def get_vad_model(device_index: int = 0):
+    """Returns the VAD model instance, preferring CUDA when available."""
     path = os.path.join(get_assets_path(), "silero_vad_v6.onnx")
-    return SileroVADModel(path)
+    return SileroVADModel(path, device_index=device_index)
 
 
 class SileroVADModel:
-    def __init__(self, path):
+    def __init__(self, path, device_index: int = 0):
         try:
             import onnxruntime
         except ImportError as e:
@@ -356,9 +358,18 @@ class SileroVADModel:
         opts.enable_cpu_mem_arena = False
         opts.log_severity_level = 4
 
+        available = [p.lower() for p in onnxruntime.get_available_providers()]
+        if "cudaexecutionprovider" in available:
+            providers = [
+                ("CUDAExecutionProvider", {"device_id": device_index}),
+                "CPUExecutionProvider",
+            ]
+        else:
+            providers = ["CPUExecutionProvider"]
+
         self.session = onnxruntime.InferenceSession(
             path,
-            providers=["CPUExecutionProvider"],
+            providers=providers,
             sess_options=opts,
         )
 
