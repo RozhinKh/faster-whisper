@@ -10,19 +10,27 @@ BENCHMARK_DIR = os.path.dirname(os.path.abspath(__file__))
 BENCHMARK_AUDIO = os.path.join(BENCHMARK_DIR, "benchmark.m4a")
 
 model_path = "large-v3"
-model = WhisperModel(model_path, device="cuda", compute_type="float16")
-pipeline = BatchedInferencePipeline(model)
+_model = None
+_pipeline = None
+
+
+def _get_model():
+    global _model, _pipeline
+    if _model is None:
+        _model = WhisperModel(model_path, device="cuda", compute_type="float16")
+        _pipeline = BatchedInferencePipeline(_model)
+    return _model, _pipeline
 
 
 def inference():
-    """No-arg callable used by speed_benchmark.py and memory_benchmark.py via timeit."""
+    model, _ = _get_model()
     segments, info = model.transcribe(BENCHMARK_AUDIO, language="fr")
     for segment in segments:
         print("[%.2fs -> %.2fs] %s" % (segment.start, segment.end, segment.text))
 
 
 def batched_inference(batch_size: int = 8, beam_size: int = 5):
-    """Inference via BatchedInferencePipeline — exposes batch_size and beam_size."""
+    _, pipeline = _get_model()
     segments, info = pipeline.transcribe(
         BENCHMARK_AUDIO,
         language="fr",
