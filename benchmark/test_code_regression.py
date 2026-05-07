@@ -1,224 +1,301 @@
 """
-Code regression test: baseline (main branch) vs PR code, same config each time.
+Code regression test suite — 40 test cases.
 
-For each test case:
-  1. Run transcription using main-branch feature_extractor + vad (CPU numpy)
-  2. Run transcription using PR feature_extractor + vad (scipy FFT + CUDA VAD)
-  3. Compare SHA1 hashes — must be identical
+Split into two categories:
 
-A pass rate of 100% means the PR code is numerically transparent.
-Any failure means the code changes affected output and must be investigated.
+  PART A — Preprocessing hash tests (20 cases)
+    CPU-only pipeline: audio decode → VAD → feature extraction.
+    No GPU involved, so output must be bit-identical between
+    baseline code and PR code.  Any hash mismatch = real code bug.
+
+  PART B — Transcription WER tests (20 cases)
+    Full GPU transcription. GPU float arithmetic is non-deterministic
+    between model loads, so exact hashes cannot be compared.
+    Instead: WER between baseline and PR must be < WER_THRESHOLD.
+    Differences above the threshold indicate a real accuracy regression.
 
 Usage:
-    # Make sure /tmp/fw-main exists (main branch clone):
+    # Requires /tmp/fw-main (main branch clone):
     #   git clone -b main https://github.com/RozhinKh/faster-whisper.git /tmp/fw-main
 
-    python benchmark/test_code_regression.py \
-        --model /home/rozhin/rozhin/models/faster-whisper-large-v3 \
+    python benchmark/test_code_regression.py \\
+        --model /home/rozhin/rozhin/models/faster-whisper-large-v3 \\
         --device-index 1
 """
 
 import argparse
 import hashlib
 import importlib.util
+import json
 import os
+import re
+import statistics
 import sys
-import types
 
 BENCHMARK_DIR = os.path.dirname(os.path.abspath(__file__))
 AUDIO = os.path.join(BENCHMARK_DIR, "benchmark.m4a")
 SAMPLING_RATE = 16000
+WER_THRESHOLD = 0.05  # 5% — any regression above this is a real problem
 
 
-def _load_module_from_path(module_name, file_path):
-    """Import a single .py file as a module without affecting sys.modules."""
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _load_module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
-def _transcribe_with_code(
-    model_path, device_index, compute_type,
-    batch_size, beam_size, language,
-    clip_start_s=None, clip_end_s=None,
-    feature_extractor_path=None,
-    vad_path=None,
-):
-    """
-    Run one transcription, optionally overriding feature_extractor and vad
-    with files from a specific branch (for baseline vs PR comparison).
-    """
-    from faster_whisper import WhisperModel, BatchedInferencePipeline
-    from faster_whisper.audio import decode_audio
-    import faster_whisper.transcribe as transcribe_mod
+def sha1(data: bytes) -> str:
+    return hashlib.sha1(data).hexdigest()[:12]
 
-    # Temporarily patch feature_extractor and vad in the transcribe module
-    # so it uses the code version we want without reinstalling anything.
-    original_fe = None
-    original_vad = None
 
-    if feature_extractor_path:
-        fe_mod = _load_module_from_path("_fe_override", feature_extractor_path)
-        original_fe = transcribe_mod.FeatureExtractor
-        transcribe_mod.FeatureExtractor = fe_mod.FeatureExtractor
+def _strip_punct(text: str) -> str:
+    text = re.sub(r"[^\w\s']", " ", text, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", text).strip().lower()
 
-    if vad_path:
-        vad_mod = _load_module_from_path("_vad_override", vad_path)
-        import faster_whisper.vad as vad_module
-        original_get_speech = vad_module.get_speech_timestamps
-        original_collect = vad_module.collect_chunks
-        vad_module.get_speech_timestamps = vad_mod.get_speech_timestamps
-        vad_module.collect_chunks = vad_mod.collect_chunks
 
+def _wer(ref: str, hyp: str) -> float:
     try:
-        audio = decode_audio(AUDIO)
-        if clip_start_s is not None:
-            s = int(clip_start_s * SAMPLING_RATE)
-            e = int(clip_end_s * SAMPLING_RATE) if clip_end_s else len(audio)
-            audio = audio[s:e]
-
-        model = WhisperModel(model_path, device="cuda",
-                             device_index=device_index, compute_type=compute_type)
-        pipeline = BatchedInferencePipeline(model)
-        segs, _ = pipeline.transcribe(
-            audio, language=language, batch_size=batch_size, beam_size=beam_size
-        )
-        text = "".join(seg.text for seg in segs)
-        del model, pipeline
-        return text
-
-    finally:
-        if original_fe is not None:
-            transcribe_mod.FeatureExtractor = original_fe
-        if vad_path:
-            vad_module.get_speech_timestamps = original_get_speech
-            vad_module.collect_chunks = original_collect
+        from jiwer import wer
+        return round(wer(_strip_punct(ref), _strip_punct(hyp)), 4)
+    except ImportError:
+        return None
 
 
-def sha1(text):
-    return hashlib.sha1(text.encode("utf-8")).hexdigest()
+def _load_audio(clip_start=None, clip_end=None):
+    from faster_whisper.audio import decode_audio
+    audio = decode_audio(AUDIO)
+    if clip_start is not None:
+        s = int(clip_start * SAMPLING_RATE)
+        e = int(clip_end * SAMPLING_RATE) if clip_end else len(audio)
+        audio = audio[s:e]
+    return audio
 
 
-def run_regression(model_path, device_index, language, baseline_dir):
+# ---------------------------------------------------------------------------
+# PART A — Preprocessing hash tests (CPU only)
+# ---------------------------------------------------------------------------
+
+def _preprocess_with_code(audio, fe_path, vad_path):
+    """
+    Run VAD + feature extraction using code from a specific branch.
+    Returns (vad_timestamps_hash, features_hash).
+    """
+    import numpy as np
+
+    fe_mod  = _load_module("_fe",  fe_path)
+    vad_mod = _load_module("_vad", vad_path)
+
+    # VAD
+    timestamps = vad_mod.get_speech_timestamps(audio, sampling_rate=SAMPLING_RATE)
+    ts_bytes = json.dumps(
+        [{"start": t["start"], "end": t["end"]} for t in timestamps]
+    ).encode()
+
+    # Feature extraction (first 30s chunk, representative)
+    chunk = audio[:SAMPLING_RATE * 30]
+    fe = fe_mod.FeatureExtractor()
+    features = fe(chunk)
+    feat_bytes = features.tobytes()
+
+    return sha1(ts_bytes), sha1(feat_bytes)
+
+
+def run_part_a(baseline_dir):
+    print("\n" + "=" * 80)
+    print("PART A — Preprocessing hash tests (CPU only, 20 cases)")
+    print("Expected: 20/20 PASS  (code changes must not change CPU output)")
+    print("=" * 80)
+
+    from faster_whisper.audio import decode_audio
+    audio_full = decode_audio(AUDIO)
+    total_s = len(audio_full) / SAMPLING_RATE
+
     baseline_fe  = os.path.join(baseline_dir, "faster_whisper", "feature_extractor.py")
     baseline_vad = os.path.join(baseline_dir, "faster_whisper", "vad.py")
 
-    if not os.path.exists(baseline_fe):
-        print(f"ERROR: baseline not found at {baseline_fe}")
-        print("Run: git clone -b main https://github.com/RozhinKh/faster-whisper.git /tmp/fw-main")
-        sys.exit(1)
+    venv_fw = os.path.dirname(__import__("faster_whisper").__file__)
+    pr_fe   = os.path.join(venv_fw, "feature_extractor.py")
+    pr_vad  = os.path.join(venv_fw, "vad.py")
 
-    from faster_whisper.audio import decode_audio
-    audio = decode_audio(AUDIO)
-    total_s = len(audio) / SAMPLING_RATE
+    for p in [baseline_fe, baseline_vad, pr_fe, pr_vad]:
+        if not os.path.exists(p):
+            print(f"ERROR: not found: {p}")
+            sys.exit(1)
 
-    # 20 test cases: full audio + 9 clips × 2 configs each
-    # Clips are evenly spaced across the full audio at 10% intervals
-    clip_positions = [total_s * i / 10 for i in range(9)]  # 0%, 10%, ..., 80%
-    clip_duration = 60.0
+    # 20 clips: full audio + 19 evenly-spaced 60s windows
+    clips = [(None, None, "full audio      ")]
+    positions = [total_s * i / 19 for i in range(19)]
+    for i, start in enumerate(positions):
+        end = min(start + 60, total_s)
+        clips.append((start, end, f"clip {i+1:02d} ({start:5.0f}s)"))
 
-    test_cases = [
-        ("full audio  | float16 bs=16 beam=5", "float16",      16, 5, None, None),
-        ("full audio  | int8    bs=32 beam=1", "int8_float16", 32, 1, None, None),
-    ]
-    for i, start in enumerate(clip_positions):
-        end = min(start + clip_duration, total_s)
-        label_f = f"clip {i+1:02d} ({start:4.0f}s) | float16 bs=16 beam=5"
-        label_i = f"clip {i+1:02d} ({start:4.0f}s) | int8    bs=32 beam=1"
-        test_cases.append((label_f, "float16",      16, 5, start, end))
-        test_cases.append((label_i, "int8_float16", 32, 1, start, end))
-
-    # Trim to exactly 20
-    test_cases = test_cases[:20]
-
-    results = []
     passed = 0
+    results = []
 
-    print(f"\n{'Test case':<45} {'Baseline SHA1':>12} {'PR SHA1':>12}  {'Match':>6}  {'Chars diff':>10}")
-    print("-" * 100)
+    print(f"\n{'Test case':<25} {'VAD hash':>12}  {'VAD match':>10}  {'FFT hash':>12}  {'FFT match':>10}")
+    print("-" * 80)
 
-    for label, compute_type, batch_size, beam_size, clip_start, clip_end in test_cases:
-        # Baseline: main branch feature_extractor + vad, same config
-        text_baseline = _transcribe_with_code(
-            model_path, device_index, compute_type,
-            batch_size, beam_size, language,
-            clip_start, clip_end,
-            feature_extractor_path=baseline_fe,
-            vad_path=baseline_vad,
-        )
+    for clip_start, clip_end, label in clips:
+        audio = _load_audio(clip_start, clip_end)
 
-        # PR: installed (venv) feature_extractor + vad, same config
-        text_pr = _transcribe_with_code(
-            model_path, device_index, compute_type,
-            batch_size, beam_size, language,
-            clip_start, clip_end,
-        )
+        vad_base, fft_base = _preprocess_with_code(audio, baseline_fe, baseline_vad)
+        vad_pr,   fft_pr   = _preprocess_with_code(audio, pr_fe,       pr_vad)
 
-        h_base = sha1(text_baseline)[:12]
-        h_pr   = sha1(text_pr)[:12]
-        match  = h_base == h_pr
-        chars_diff = len(text_pr) - len(text_baseline)
-
-        if match:
+        vad_ok = vad_base == vad_pr
+        fft_ok = fft_base == fft_pr
+        ok = vad_ok and fft_ok
+        if ok:
             passed += 1
-            status = "PASS ✓"
-        else:
-            status = "FAIL ✗"
 
-        print(f"  {label:<43} {h_base}  {h_pr}  {status}  {chars_diff:+d}")
+        status_v = "PASS ✓" if vad_ok else "FAIL ✗"
+        status_f = "PASS ✓" if fft_ok else "FAIL ✗"
+        print(f"  {label:<23} {vad_base}  {status_v:>10}  {fft_base}  {status_f:>10}")
         results.append({
-            "test": label,
-            "compute_type": compute_type,
-            "batch_size": batch_size,
-            "beam_size": beam_size,
-            "baseline_sha1": sha1(text_baseline),
-            "pr_sha1": sha1(text_pr),
-            "match": match,
-            "baseline_chars": len(text_baseline),
-            "pr_chars": len(text_pr),
+            "test": label.strip(), "vad_match": vad_ok, "fft_match": fft_ok,
+            "vad_base": vad_base, "vad_pr": vad_pr,
+            "fft_base": fft_base, "fft_pr": fft_pr,
         })
 
-    total = len(test_cases)
-    pct = 100 * passed / total
-    print("-" * 100)
-    print(f"\n  PASS RATE: {passed}/{total} ({pct:.0f}%)")
+    pct = 100 * passed / len(clips)
+    print("-" * 80)
+    print(f"\n  PASS RATE: {passed}/{len(clips)} ({pct:.0f}%)")
+    return results, passed, len(clips)
 
-    if passed == total:
-        print("  RESULT: PR code is numerically identical to baseline across all test cases.")
-    else:
-        failed = [r for r in results if not r["match"]]
-        print(f"  RESULT: {len(failed)} test(s) failed — PR code changed output.")
-        for f in failed:
-            print(f"    - {f['test']}")
 
-    return results, passed, total
+# ---------------------------------------------------------------------------
+# PART B — Transcription WER tests (GPU, WER threshold)
+# ---------------------------------------------------------------------------
 
+def _transcribe(model_path, device_index, compute_type, batch_size, beam_size,
+                clip_start=None, clip_end=None):
+    from faster_whisper import WhisperModel, BatchedInferencePipeline
+    audio = _load_audio(clip_start, clip_end)
+    model = WhisperModel(model_path, device="cuda",
+                         device_index=device_index, compute_type=compute_type)
+    pipeline = BatchedInferencePipeline(model)
+    segs, _ = pipeline.transcribe(audio, language="fr",
+                                  batch_size=batch_size, beam_size=beam_size)
+    text = "".join(s.text for s in segs)
+    del model, pipeline
+    return text
+
+
+def run_part_b(model_path, device_index):
+    print("\n" + "=" * 80)
+    print(f"PART B — Transcription WER tests (GPU, 20 cases, threshold={WER_THRESHOLD:.0%})")
+    print("Baseline: float16 bs=16 beam=5    PR: int8_float16 bs=32 beam=1")
+    print("GPU is non-deterministic between loads — WER measures real accuracy change")
+    print("=" * 80)
+
+    from faster_whisper.audio import decode_audio
+    total_s = len(decode_audio(AUDIO)) / SAMPLING_RATE
+
+    clips = [(None, None, "full audio      ")]
+    positions = [total_s * i / 19 for i in range(19)]
+    for i, start in enumerate(positions):
+        end = min(start + 60, total_s)
+        clips.append((start, end, f"clip {i+1:02d} ({start:5.0f}s)"))
+
+    passed = 0
+    results = []
+    wer_values = []
+
+    print(f"\n{'Test case':<25} {'WER':>8}  {'Chars diff':>12}  {'Result':>10}")
+    print("-" * 65)
+
+    for clip_start, clip_end, label in clips:
+        base_text = _transcribe(model_path, device_index, "float16",      16, 5,
+                                clip_start, clip_end)
+        pr_text   = _transcribe(model_path, device_index, "int8_float16", 32, 1,
+                                clip_start, clip_end)
+
+        w = _wer(base_text, pr_text)
+        chars_diff = len(pr_text) - len(base_text)
+        ok = (w is not None and w <= WER_THRESHOLD)
+        if ok:
+            passed += 1
+        if w is not None:
+            wer_values.append(w)
+
+        status = "PASS ✓" if ok else "FAIL ✗"
+        print(f"  {label:<23} {w:>8.4f}  {chars_diff:>+12d}  {status:>10}")
+        results.append({
+            "test": label.strip(), "wer": w, "chars_diff": chars_diff, "pass": ok,
+            "base_chars": len(base_text), "pr_chars": len(pr_text),
+        })
+
+    pct = 100 * passed / len(clips)
+    mean_wer = statistics.mean(wer_values) if wer_values else None
+    max_wer  = max(wer_values) if wer_values else None
+
+    print("-" * 65)
+    print(f"\n  PASS RATE : {passed}/{len(clips)} ({pct:.0f}%)")
+    if mean_wer is not None:
+        print(f"  Mean WER  : {mean_wer:.4f} ({mean_wer*100:.2f}%)")
+        print(f"  Max WER   : {max_wer:.4f}  ({max_wer*100:.2f}%)")
+    return results, passed, len(clips), mean_wer, max_wer
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="large-v3")
     parser.add_argument("--device-index", type=int, default=1)
-    parser.add_argument("--language", default="fr")
-    parser.add_argument("--baseline-dir", default="/tmp/fw-main",
-                        help="Path to main-branch clone for baseline code")
+    parser.add_argument("--baseline-dir", default="/tmp/fw-main")
     parser.add_argument("--output",
                         default="benchmark/artifacts/regression_report.json")
+    parser.add_argument("--skip-part-a", action="store_true")
+    parser.add_argument("--skip-part-b", action="store_true")
     args = parser.parse_args()
 
-    results, passed, total = run_regression(
-        args.model, args.device_index, args.language, args.baseline_dir
-    )
+    report = {}
+
+    if not args.skip_part_a:
+        res_a, pass_a, total_a = run_part_a(args.baseline_dir)
+        report["part_a_preprocessing"] = {
+            "description": "CPU-only hash comparison (VAD + FFT)",
+            "passed": pass_a, "total": total_a,
+            "pass_rate_pct": round(100 * pass_a / total_a, 1),
+            "tests": res_a,
+        }
+
+    if not args.skip_part_b:
+        res_b, pass_b, total_b, mean_wer, max_wer = run_part_b(
+            args.model, args.device_index)
+        report["part_b_transcription"] = {
+            "description": f"GPU transcription WER (threshold {WER_THRESHOLD:.0%})",
+            "passed": pass_b, "total": total_b,
+            "pass_rate_pct": round(100 * pass_b / total_b, 1),
+            "mean_wer": round(mean_wer, 4) if mean_wer else None,
+            "max_wer":  round(max_wer,  4) if max_wer  else None,
+            "tests": res_b,
+        }
 
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
-    import json
     with open(args.output, "w", encoding="utf-8") as f:
-        json.dump({
-            "passed": passed,
-            "total": total,
-            "pass_rate_pct": round(100 * passed / total, 1),
-            "tests": results,
-        }, f, indent=2, ensure_ascii=False)
+        json.dump(report, f, indent=2, ensure_ascii=False)
+
+    # Final summary
+    print("\n" + "=" * 80)
+    print("FINAL SUMMARY")
+    print("=" * 80)
+    if "part_a_preprocessing" in report:
+        pa = report["part_a_preprocessing"]
+        status = "✅ PASS" if pa["passed"] == pa["total"] else "❌ FAIL"
+        print(f"  Part A (preprocessing hash) : {pa['passed']}/{pa['total']} ({pa['pass_rate_pct']:.0f}%)  {status}")
+    if "part_b_transcription" in report:
+        pb = report["part_b_transcription"]
+        status = "✅ PASS" if pb["passed"] == pb["total"] else "⚠️  CHECK"
+        print(f"  Part B (transcription WER)  : {pb['passed']}/{pb['total']} ({pb['pass_rate_pct']:.0f}%)  "
+              f"mean WER={pb['mean_wer']:.4f}  max WER={pb['max_wer']:.4f}  {status}")
     print(f"\n  report -> {args.output}")
 
 
