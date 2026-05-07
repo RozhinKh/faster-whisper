@@ -69,7 +69,7 @@ def run(
         }
 
     def _measure_preprocessing():
-        """Time the CPU preprocessing pipeline independently of GPU inference."""
+        """Time VAD and FFT separately for CPU pipeline breakdown."""
         from faster_whisper.audio import decode_audio
         from faster_whisper.vad import get_speech_timestamps
         from faster_whisper.feature_extractor import FeatureExtractor
@@ -77,13 +77,18 @@ def run(
         audio = decode_audio(AUDIO)
         if clip_seconds is not None:
             audio = audio[:int(clip_seconds * 16000)]
-
-        t0 = time.perf_counter()
-        _ = get_speech_timestamps(audio, sampling_rate=16000, device_index=device_index)
-        fe = FeatureExtractor()
         chunk = audio[:16000 * 30] if len(audio) > 16000 * 30 else audio
+
+        t_vad = time.perf_counter()
+        _ = get_speech_timestamps(audio, sampling_rate=16000)
+        vad_time = time.perf_counter() - t_vad
+
+        fe = FeatureExtractor()
+        t_fft = time.perf_counter()
         _ = fe(chunk)
-        return time.perf_counter() - t0
+        fft_time = time.perf_counter() - t_fft
+
+        return vad_time + fft_time, vad_time, fft_time
 
     # Warmup run is not timed.
     print("  warming up...")
@@ -92,8 +97,10 @@ def run(
 
     print("  timing preprocessing...")
     sys.stdout.flush()
-    preprocessing_timings = [_measure_preprocessing() for _ in range(3)]
-    preprocessing_time_s = statistics.median(preprocessing_timings)
+    pre_runs = [_measure_preprocessing() for _ in range(5)]
+    preprocessing_time_s = statistics.median([r[0] for r in pre_runs])
+    vad_time_s           = statistics.median([r[1] for r in pre_runs])
+    fft_time_s           = statistics.median([r[2] for r in pre_runs])
 
     print("  timing...")
     sys.stdout.flush()
@@ -119,11 +126,19 @@ def run(
     except Exception:
         pass
 
+    speed_mean_s = statistics.mean(timings)
+    speed_p95_s  = sorted(timings)[int(len(timings) * 0.95)] if len(timings) > 1 else timings[0]
+
     result = {
-        "speed_min_s": round(elapsed, 3),
-        "speed_p95_s": round(max(timings), 3),
+        "speed_median_s": round(elapsed, 3),
+        "speed_mean_s": round(speed_mean_s, 3),
+        "speed_p95_s": round(speed_p95_s, 3),
         "speed_stddev_ms": round(statistics.pstdev(timings) * 1000, 3),
+        "speed_min_s": round(min(timings), 3),
+        "speed_max_s": round(max(timings), 3),
         "preprocessing_time_s": round(preprocessing_time_s, 3),
+        "vad_time_s": round(vad_time_s, 3),
+        "fft_time_s": round(fft_time_s, 3),
         "timed_runs": timed_runs,
         "vram_used_mib": vram_used_mib,
         "throughput_x": round(throughput_x, 3) if throughput_x is not None else None,
@@ -141,9 +156,12 @@ def run(
         "benchmark_mode": "smoke" if clip_seconds is not None else "full",
     }
 
-    print(f"  transcription time : {elapsed:.3f}s")
-    print(f"  preprocessing time : {preprocessing_time_s:.3f}s")
-    print(f"  throughput         : {throughput_x:.3f}x")
+    print(f"  transcription median: {elapsed:.3f}s  mean: {speed_mean_s:.3f}s  "
+          f"stddev: {result['speed_stddev_ms']:.1f}ms  p95: {speed_p95_s:.3f}s  "
+          f"(n={timed_runs})")
+    print(f"  preprocessing       : {preprocessing_time_s:.3f}s  "
+          f"(VAD {vad_time_s:.3f}s + FFT {fft_time_s:.3f}s)")
+    print(f"  throughput          : {throughput_x:.3f}x")
     if vram_used_mib is not None:
         print(f"  VRAM used          : {vram_used_mib} MiB")
     sys.stdout.flush()
