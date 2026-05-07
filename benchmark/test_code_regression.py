@@ -80,29 +80,30 @@ def _load_audio(clip_start=None, clip_end=None):
 # PART A — Preprocessing hash tests (CPU only)
 # ---------------------------------------------------------------------------
 
+FFT_ABS_TOLERANCE = 1e-5  # max allowed per-element difference in mel features
+
 def _preprocess_with_code(audio, fe_path, vad_path):
     """
     Run VAD + feature extraction using code from a specific branch.
-    Returns (vad_timestamps_hash, features_hash).
+    Returns (vad_timestamps_hash, features_array).
+    VAD is compared by exact hash (deterministic CPU ONNX).
+    FFT/features are compared by numerical tolerance — parallel FFT
+    (workers=-1) is non-associative, so last-bit differences are expected
+    and acceptable. What matters is the values are within machine epsilon.
     """
-    import numpy as np
-
     fe_mod  = _load_module("_fe",  fe_path)
     vad_mod = _load_module("_vad", vad_path)
 
-    # VAD
     timestamps = vad_mod.get_speech_timestamps(audio, sampling_rate=SAMPLING_RATE)
     ts_bytes = json.dumps(
         [{"start": t["start"], "end": t["end"]} for t in timestamps]
     ).encode()
 
-    # Feature extraction (first 30s chunk, representative)
     chunk = audio[:SAMPLING_RATE * 30]
     fe = fe_mod.FeatureExtractor()
-    features = fe(chunk)
-    feat_bytes = features.tobytes()
+    features = fe(chunk)  # returns float32 mel spectrogram
 
-    return sha1(ts_bytes), sha1(feat_bytes)
+    return sha1(ts_bytes), features
 
 
 def run_part_a(baseline_dir):
@@ -137,33 +138,40 @@ def run_part_a(baseline_dir):
     passed = 0
     results = []
 
-    print(f"\n{'Test case':<25} {'VAD hash':>12}  {'VAD match':>10}  {'FFT hash':>12}  {'FFT match':>10}")
+    import numpy as np
+    print(f"\n{'Test case':<25} {'VAD':>10}  {'FFT max diff':>14}  {'FFT tol':>10}  {'Result':>8}")
     print("-" * 80)
 
     for clip_start, clip_end, label in clips:
         audio = _load_audio(clip_start, clip_end)
 
-        vad_base, fft_base = _preprocess_with_code(audio, baseline_fe, baseline_vad)
-        vad_pr,   fft_pr   = _preprocess_with_code(audio, pr_fe,       pr_vad)
+        vad_base, feat_base = _preprocess_with_code(audio, baseline_fe, baseline_vad)
+        vad_pr,   feat_pr   = _preprocess_with_code(audio, pr_fe,       pr_vad)
 
-        vad_ok = vad_base == vad_pr
-        fft_ok = fft_base == fft_pr
+        vad_ok  = vad_base == vad_pr
+        max_diff = float(np.max(np.abs(feat_base.astype(np.float64) - feat_pr.astype(np.float64))))
+        fft_ok  = max_diff <= FFT_ABS_TOLERANCE
         ok = vad_ok and fft_ok
         if ok:
             passed += 1
 
         status_v = "PASS ✓" if vad_ok else "FAIL ✗"
         status_f = "PASS ✓" if fft_ok else "FAIL ✗"
-        print(f"  {label:<23} {vad_base}  {status_v:>10}  {fft_base}  {status_f:>10}")
+        result_s = "PASS ✓" if ok else "FAIL ✗"
+        print(f"  {label:<23} {status_v:>10}  {max_diff:>14.2e}  {status_f:>10}  {result_s:>8}")
         results.append({
-            "test": label.strip(), "vad_match": vad_ok, "fft_match": fft_ok,
-            "vad_base": vad_base, "vad_pr": vad_pr,
-            "fft_base": fft_base, "fft_pr": fft_pr,
+            "test": label.strip(),
+            "vad_match": vad_ok,
+            "fft_max_diff": round(max_diff, 10),
+            "fft_within_tolerance": fft_ok,
+            "tolerance": FFT_ABS_TOLERANCE,
+            "pass": ok,
         })
 
     pct = 100 * passed / len(clips)
     print("-" * 80)
     print(f"\n  PASS RATE: {passed}/{len(clips)} ({pct:.0f}%)")
+    print(f"  FFT tolerance: max absolute difference per mel-spectrogram element < {FFT_ABS_TOLERANCE:.0e}")
     return results, passed, len(clips)
 
 
