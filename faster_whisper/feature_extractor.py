@@ -203,12 +203,15 @@ class FeatureExtractor:
                     "Cannot have onesided output if window or input is complex"
                 )
             if _scipy_fft is not None:
-                output = _scipy_fft.fft(frames, n=n_fft, axis=-1, norm=norm, workers=_FFT_WORKERS)
+                # Cast to float64 to match numpy.fft internal precision (pocketfft
+                # upcasts float32→float64 internally; scipy respects input dtype).
+                # This preserves multi-threaded speedup while keeping bit-identical output.
+                output = _scipy_fft.fft(frames.astype(np.float64), n=n_fft, axis=-1, norm=norm, workers=_FFT_WORKERS)
             else:
                 output = np.fft.fft(frames, n=n_fft, axis=-1, norm=norm)
         else:
             if _scipy_fft is not None:
-                output = _scipy_fft.rfft(frames, n=n_fft, axis=-1, norm=norm, workers=_FFT_WORKERS)
+                output = _scipy_fft.rfft(frames.astype(np.float64), n=n_fft, axis=-1, norm=norm, workers=_FFT_WORKERS)
             else:
                 output = np.fft.rfft(frames, n=n_fft, axis=-1, norm=norm)
 

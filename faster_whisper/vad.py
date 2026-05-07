@@ -358,18 +358,9 @@ class SileroVADModel:
         opts.enable_cpu_mem_arena = False
         opts.log_severity_level = 4
 
-        available = [p.lower() for p in onnxruntime.get_available_providers()]
-        if "cudaexecutionprovider" in available:
-            providers = [
-                ("CUDAExecutionProvider", {"device_id": device_index}),
-                "CPUExecutionProvider",
-            ]
-        else:
-            providers = ["CPUExecutionProvider"]
-
         self.session = onnxruntime.InferenceSession(
             path,
-            providers=providers,
+            providers=["CPUExecutionProvider"],
             sess_options=opts,
         )
 

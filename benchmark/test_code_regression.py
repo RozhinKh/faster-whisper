@@ -113,17 +113,24 @@ def run_regression(model_path, device_index, language, baseline_dir):
     audio = decode_audio(AUDIO)
     total_s = len(audio) / SAMPLING_RATE
 
-    # Test cases: (label, compute_type, batch_size, beam_size, clip_start, clip_end)
+    # 20 test cases: full audio + 9 clips × 2 configs each
+    # Clips are evenly spaced across the full audio at 10% intervals
+    clip_positions = [total_s * i / 10 for i in range(9)]  # 0%, 10%, ..., 80%
+    clip_duration = 60.0
+
     test_cases = [
-        ("full audio  | float16 bs=16 beam=5", "float16",      16, 5, None,            None),
-        ("full audio  | int8    bs=32 beam=1", "int8_float16", 32, 1, None,            None),
-        ("first 60s   | float16 bs=16 beam=5", "float16",      16, 5, 0,               60),
-        ("first 60s   | int8    bs=32 beam=1", "int8_float16", 32, 1, 0,               60),
-        ("middle 60s  | float16 bs=16 beam=5", "float16",      16, 5, total_s/2 - 30,  total_s/2 + 30),
-        ("middle 60s  | int8    bs=32 beam=1", "int8_float16", 32, 1, total_s/2 - 30,  total_s/2 + 30),
-        ("last 60s    | float16 bs=16 beam=5", "float16",      16, 5, total_s - 60,    total_s),
-        ("last 60s    | int8    bs=32 beam=1", "int8_float16", 32, 1, total_s - 60,    total_s),
+        ("full audio  | float16 bs=16 beam=5", "float16",      16, 5, None, None),
+        ("full audio  | int8    bs=32 beam=1", "int8_float16", 32, 1, None, None),
     ]
+    for i, start in enumerate(clip_positions):
+        end = min(start + clip_duration, total_s)
+        label_f = f"clip {i+1:02d} ({start:4.0f}s) | float16 bs=16 beam=5"
+        label_i = f"clip {i+1:02d} ({start:4.0f}s) | int8    bs=32 beam=1"
+        test_cases.append((label_f, "float16",      16, 5, start, end))
+        test_cases.append((label_i, "int8_float16", 32, 1, start, end))
+
+    # Trim to exactly 20
+    test_cases = test_cases[:20]
 
     results = []
     passed = 0
