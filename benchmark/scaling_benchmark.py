@@ -68,18 +68,18 @@ def run_length_scaling(model_path, device_index, language):
 
         # warmup
         audio_warm = decode_audio(os.path.join(VARIANTS_DIR, "clean_30s.wav"))
-        _, _ = pipeline.transcribe(audio_warm, language=language, batch_size=batch_size, beam_size=beam_size)
-        list(_)  # consume
+        segs_w, _ = pipeline.transcribe(audio_warm, language=language, batch_size=batch_size, beam_size=beam_size)
+        list(segs_w)  # consume generator
 
         for label, path, nominal_s in clips:
             audio    = decode_audio(path)
             duration = len(audio) / SR
 
             timings = []
-            for _ in range(3):
+            for run_i in range(3):
                 t0   = time.perf_counter()
-                segs, _ = pipeline.transcribe(audio, language=language,
-                                              batch_size=batch_size, beam_size=beam_size)
+                segs, _info = pipeline.transcribe(audio, language=language,
+                                                  batch_size=batch_size, beam_size=beam_size)
                 list(segs)
                 timings.append(time.perf_counter() - t0)
 
