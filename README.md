@@ -2,6 +2,25 @@
 
 # Faster Whisper transcription with CTranslate2
 
+---
+
+## Artemis Optimization — `optimize/artemis-candidate`
+
+> **Branch:** `optimize/artemis-candidate` | **Author:** Rozhin Khalilian | **Date:** 2026-05-07
+
+Artemis identified a high-impact parameter combination for faster-whisper large-v3 on RTX 3090 + Xeon Gold 6230. Combined with code-level preprocessing improvements, the optimisation delivers:
+
+| Metric | Improvement |
+|---|---|
+| Transcription time (13 min audio) | **−24.7%** |
+| Throughput | **80× → 106× real-time** |
+| VRAM usage | **−39.1%** |
+| API latency (short concurrent requests) | **−81% to −96% RTF** |
+
+**[→ Full Optimization Report](OPTIMIZATION_REPORT.md)**
+
+---
+
 **faster-whisper** is a reimplementation of OpenAI's Whisper model using [CTranslate2](https://github.com/OpenNMT/CTranslate2/), which is a fast inference engine for Transformer models.
 
 This implementation is up to 4 times faster than [openai/whisper](https://github.com/openai/whisper) for the same accuracy while using less memory. The efficiency can be further improved with 8-bit quantization on both CPU and GPU.
