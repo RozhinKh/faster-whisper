@@ -1,0 +1,18 @@
+FROM fedirz/faster-whisper-server:latest-cuda
+
+# Install scipy for multi-threaded FFT (Part B code change)
+RUN pip install scipy
+
+# Inject optimised faster_whisper source files over the installed package
+COPY faster_whisper/feature_extractor.py /tmp/feature_extractor.py
+COPY faster_whisper/vad.py /tmp/vad.py
+RUN python3 -c "\
+import faster_whisper, os, shutil; \
+d = os.path.dirname(faster_whisper.__file__); \
+shutil.copy('/tmp/feature_extractor.py', os.path.join(d, 'feature_extractor.py')); \
+shutil.copy('/tmp/vad.py', os.path.join(d, 'vad.py')); \
+print('Injected into', d)"
+
+# Optimised inference config (beam=1 greedy, batch=32, int8_float16 set at runtime)
+ENV WHISPER_BEAM_SIZE=1
+ENV WHISPER_BATCH_SIZE=32
