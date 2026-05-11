@@ -6,12 +6,10 @@ RUN uv pip install scipy --system
 # Inject optimised faster_whisper source files over the installed package
 COPY faster_whisper/feature_extractor.py /tmp/feature_extractor.py
 COPY faster_whisper/vad.py /tmp/vad.py
-RUN python3 -c "\
-import faster_whisper, os, shutil; \
-d = os.path.dirname(faster_whisper.__file__); \
-shutil.copy('/tmp/feature_extractor.py', os.path.join(d, 'feature_extractor.py')); \
-shutil.copy('/tmp/vad.py', os.path.join(d, 'vad.py')); \
-print('Injected into', d)"
+RUN FW_DIR=$(find / -type f -name "feature_extractor.py" -path "*/faster_whisper/*" 2>/dev/null | head -1 | xargs dirname) && \
+    echo "Injecting into $FW_DIR" && \
+    cp /tmp/feature_extractor.py "$FW_DIR/feature_extractor.py" && \
+    cp /tmp/vad.py "$FW_DIR/vad.py"
 
 # Optimised inference config (beam=1 greedy, batch=32, int8_float16 set at runtime)
 ENV WHISPER_BEAM_SIZE=1
