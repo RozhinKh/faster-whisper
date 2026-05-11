@@ -15,7 +15,6 @@
 | Model | faster-whisper-large-v3 |
 | Hardware | NVIDIA RTX 3090 24 GB, Intel Xeon Gold 6230 (20 cores), 251 GB RAM |
 | Runtime | CTranslate2 + ONNX Runtime |
-| Benchmark audio | 13 min French speech, 16 kHz |
 
 ---
 
