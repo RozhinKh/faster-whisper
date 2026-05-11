@@ -1,7 +1,7 @@
 FROM fedirz/faster-whisper-server:latest-cuda
 
 # Install scipy for multi-threaded FFT (Part B code change)
-RUN pip3 install scipy
+RUN python3 -m pip install scipy
 
 # Inject optimised faster_whisper source files over the installed package
 COPY faster_whisper/feature_extractor.py /tmp/feature_extractor.py
