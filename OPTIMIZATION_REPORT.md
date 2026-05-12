@@ -193,7 +193,8 @@ Measured with `artemisasrbench` on the Turing-ASR-Benchmark suite. Both baseline
 | clean_long_v1 | 23.45s | 0.01627 | 0.01696 | 0.01727 | 381.6 ms | 397.7 ms | 1.67 |
 | clean_short_v1 | 8.37s | 0.13452 | 0.13615 | 0.13627 | 1125.9 ms | 1139.6 ms | 17.53 |
 | control_phrase_v1 | 4.21s | 0.45681 | 0.48568 | 0.49866 | 1923.2 ms | 2044.7 ms | 9.20 |
-| noisy_v1 | 9.12s | 0.09690 | 0.09964 | 0.10126 | 883.7 ms | 908.7 ms | 15.69 |
+| noisy_v1 | 2.10s | 0.88340 | 1.15090 | 1.26990 | 1851 ms | — | 30.3 |
+| long_form_v1 | 156.5s | 0.03880 | 0.03900 | 0.03900 | 6074 ms | — | 0.4 |
 
 **Optimised (int8_float16, beam=1, batch=32 + scipy FFT + O(n) VAD)**
 
@@ -202,26 +203,35 @@ Measured with `artemisasrbench` on the Turing-ASR-Benchmark suite. Both baseline
 | clean_long_v1 | 23.45s | 0.00308 | 0.00341 | 0.00359 | 72.2 ms | 80.0 ms | 7.57 |
 | clean_short_v1 | 8.37s | 0.00771 | 0.00813 | 0.00830 | 64.6 ms | 68.1 ms | 7.12 |
 | control_phrase_v1 | 4.21s | 0.01764 | 0.01910 | 0.01988 | 74.1 ms | 80.4 ms | 4.42 |
-| noisy_v1 | 9.12s | 0.00699 | 0.00784 | 0.00821 | 64.7 ms | 71.5 ms | 9.33 |
+| noisy_v1 | 2.10s | 0.02950 | 0.03450 | 0.03740 | 62 ms | — | 8.6 |
+| long_form_v1 | 156.5s | 0.03330 | 0.03350 | 0.03350 | 5213 ms | — | 0.3 |
 
 **Delta (P50 RTF — lower is better)**
 
-| Scenario | Baseline RTF P50 | Optimised RTF P50 | Delta | Latency saved (P50) |
+| Scenario | Baseline RTF P50 | Optimised RTF P50 | Delta | Mode |
 |---|---|---|---|---|
-| clean_long_v1 | 0.016 | 0.003 | **−81.4%** | −309 ms |
-| clean_short_v1 | 0.135 | 0.008 | **−94.3%** | −1,061 ms |
-| control_phrase_v1 | 0.457 | 0.018 | **−96.2%** | −1,849 ms |
-| noisy_v1 | 0.097 | 0.007 | **−93.5%** | −819 ms |
+| clean_long_v1 | 0.0163 | 0.0031 | **−81.4%** | concurrent |
+| clean_short_v1 | 0.1345 | 0.0077 | **−94.3%** | concurrent |
+| control_phrase_v1 | 0.4568 | 0.0176 | **−96.2%** | concurrent |
+| noisy_v1 | 0.8834 | 0.0295 | **−96.7%** | concurrent |
+| long_form_v1 | 0.0388 | 0.0333 | **−14.2%** | sequential |
 
-All scenarios passed accuracy validation (WER=0.0% on clean audio, WER=0.222 on noisy — identical to baseline).
+All scenarios passed accuracy validation (WER=0.0% on clean audio, WER=22.2% on noisy — same as baseline).
 
-### Why the gains are larger than Section 3
+### Reading the numbers
 
-The ga_benchmark (Section 3) measures a single 13-minute file sequentially — GPU stays saturated at beam=5, so the relative gain is −24.7%.
+The gain varies with audio length because GPU utilization changes completely at different scales:
 
-The artemisasrbench measures short clips (4–23s) under concurrent load. beam=5 generates disproportionate decoder overhead at short lengths — many search steps relative to audio content. beam=1 collapses decode time to ~65ms per request regardless of clip length, producing 80–96% RTF improvement for short concurrent requests.
+| Audio | Baseline throughput | Optimised | Gain | What dominates |
+|---|---|---|---|---|
+| 2.1s (noisy) | 0.5× RT | 32× RT | **−96.7%** | Almost pure decoder overhead |
+| 4–23s (short scenarios) | 2–62× RT | 125–250× RT | **−81 to −96%** | beam=5 search dominates |
+| 156s (long_form) | 25.8× RT | 30.1× RT | **−14.2%** | GPU busier; decoder smaller fraction |
+| 780s (ga_benchmark) | 76.5× RT | 104.8× RT | **−27.0%** | Full GPU saturation |
 
-Both are correct. The relevant number depends on the use case: **−24.7% for batch processing of long files, −80–96% for a real-time API serving short requests concurrently.**
+All numbers are correct — they measure the same optimisation at different operating points. The long_form_v1 result (−14.2%) sits exactly where Section 6's scaling curve predicts for ~2.5 minutes of audio, bridging the API benchmark and the ga_benchmark.
+
+**The relevant number depends on use case: −27% for batch processing of long files, −81–97% for a real-time API serving short concurrent requests.**
 
 ---
 
