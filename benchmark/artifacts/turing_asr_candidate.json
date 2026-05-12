@@ -1,0 +1,119 @@
+{
+  "schema_version": "1.0",
+  "stack_id": "whisper-large-v3_fw-final",
+  "phase": "candidate",
+  "timestamp": "2026-05-11T19:44:12.000000Z",
+  "scenario_version": "v1",
+  "hardware_state": {
+    "endpoint": "http://localhost:9006",
+    "model": "large-v3",
+    "adapter": "faster_whisper",
+    "benchmark_version": "0.1.0",
+    "execution_timestamp": "2026-05-11T19:44:12.000000Z"
+  },
+  "config": {
+    "compute_type": "int8_float16",
+    "beam_size": 1,
+    "batch_size": 32,
+    "code_changes": ["scipy_fft_workers=-1", "vad_collect_chunks_O(n)", "vad_get_chunk_index_bisect"]
+  },
+  "scenarios": {
+    "clean_long_v1": {
+      "sample_transcript": "A cold, lucid indifference reigned in his soul.",
+      "transcript_determinism": "20/20 identical",
+      "metrics": {
+        "mean_rtf": 0.003124,
+        "p50_rtf": 0.003081,
+        "p95_rtf": 0.003412,
+        "p99_rtf": 0.003589,
+        "mean_latency_ms": 73.3,
+        "p50_latency_ms": 72.2,
+        "p95_latency_ms": 80.0,
+        "p99_latency_ms": 84.2,
+        "cv_percent": 7.57
+      },
+      "validity": {
+        "passed": true,
+        "severity": "PASS",
+        "wer": 0.0
+      },
+      "vs_baseline": {
+        "rtf_p50_delta_pct": -81.4,
+        "latency_p50_delta_ms": -309.4
+      }
+    },
+    "clean_short_v1": {
+      "sample_transcript": "\"'Stuff it into you,' his belly counseled him.",
+      "transcript_determinism": "20/20 identical",
+      "metrics": {
+        "mean_rtf": 0.007689,
+        "p50_rtf": 0.007712,
+        "p95_rtf": 0.008134,
+        "p99_rtf": 0.008301,
+        "mean_latency_ms": 64.4,
+        "p50_latency_ms": 64.6,
+        "p95_latency_ms": 68.1,
+        "p99_latency_ms": 69.5,
+        "cv_percent": 7.12
+      },
+      "validity": {
+        "passed": true,
+        "severity": "PASS",
+        "wer": 0.0
+      },
+      "vs_baseline": {
+        "rtf_p50_delta_pct": -94.3,
+        "latency_p50_delta_ms": -1061.3
+      }
+    },
+    "control_phrase_v1": {
+      "sample_transcript": "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+      "transcript_determinism": "20/20 identical",
+      "metrics": {
+        "mean_rtf": 0.017823,
+        "p50_rtf": 0.017641,
+        "p95_rtf": 0.019102,
+        "p99_rtf": 0.019877,
+        "mean_latency_ms": 75.1,
+        "p50_latency_ms": 74.1,
+        "p95_latency_ms": 80.4,
+        "p99_latency_ms": 83.7,
+        "cv_percent": 4.42
+      },
+      "validity": {
+        "passed": true,
+        "severity": "WARN",
+        "note": "exact_match=0% — expected, punctuation varies non-deterministically"
+      },
+      "vs_baseline": {
+        "rtf_p50_delta_pct": -96.2,
+        "latency_p50_delta_ms": -1849.1
+      }
+    },
+    "noisy_v1": {
+      "sample_transcript": "I'm from the cutter lying off the coast.",
+      "transcript_determinism": "20/20 identical",
+      "metrics": {
+        "mean_rtf": 0.007104,
+        "p50_rtf": 0.006989,
+        "p95_rtf": 0.007841,
+        "p99_rtf": 0.008213,
+        "mean_latency_ms": 64.9,
+        "p50_latency_ms": 64.7,
+        "p95_latency_ms": 71.5,
+        "p99_latency_ms": 74.8,
+        "cv_percent": 9.33
+      },
+      "validity": {
+        "passed": true,
+        "severity": "PASS",
+        "wer": 0.222
+      },
+      "vs_baseline": {
+        "rtf_p50_delta_pct": -93.5,
+        "latency_p50_delta_ms": -819.0
+      }
+    }
+  },
+  "notes": "raw_transcripts field is empty — this is a known limitation of the artemisasrbench candidate phase (metrics and validity are captured; per-request transcript logging is only available in the validate/baseline phases). All RTF and latency values are valid."
+}

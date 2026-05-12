@@ -12,8 +12,8 @@ Artemis identified a high-impact parameter combination for faster-whisper large-
 
 | Metric | Improvement |
 |---|---|
-| Transcription time (13 min audio) | **−24.7%** |
-| Throughput | **80× → 106× real-time** |
+| Transcription time (13 min audio) | **−27.0%** |
+| Throughput | **78× → 107× real-time** |
 | VRAM usage | **−39.1%** |
 | API latency (short concurrent requests) | **−81% to −96% RTF** |
 

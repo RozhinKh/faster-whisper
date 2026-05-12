@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "stack_id": "whisper-large-v3_fw-final",
+  "phase": "baseline",
+  "timestamp": "2026-05-11T16:19:27.674307Z",
+  "scenario_version": "v1",
+  "hardware_state": {
+    "endpoint": "http://localhost:9006",
+    "model": "large-v3",
+    "adapter": "faster_whisper",
+    "benchmark_version": "0.1.0",
+    "execution_timestamp": "2026-05-11T16:19:27.674292Z"
+  },
+  "scenarios": {
+    "clean_long_v1": {
+      "sample_transcript": "A cold, lucid indifference reigned in his soul.",
+      "transcript_determinism": "20/20 identical",
+      "metrics": {
+        "mean_rtf": 0.01634910995724486,
+        "p50_rtf": 0.01627349018701104,
+        "p95_rtf": 0.01695968512533062,
+        "p99_rtf": 0.01727337569697325,
+        "mean_latency_ms": 383.39,
+        "p50_latency_ms": 381.61,
+        "p95_latency_ms": 397.70,
+        "p99_latency_ms": 405.06,
+        "cv_percent": 1.67
+      },
+      "validity": {
+        "passed": true,
+        "severity": "PASS",
+        "wer": 0.0
+      }
+    },
+    "clean_short_v1": {
+      "sample_transcript": "\"'Stuff it into you,' his belly counseled him.",
+      "transcript_determinism": "20/20 identical",
+      "metrics": {
+        "mean_rtf": 0.12371797895386127,
+        "p50_rtf": 0.13451571815525903,
+        "p95_rtf": 0.13614973051110763,
+        "p99_rtf": 0.1362671382422587,
+        "mean_latency_ms": 1035.52,
+        "p50_latency_ms": 1125.90,
+        "p95_latency_ms": 1139.57,
+        "p99_latency_ms": 1140.56,
+        "cv_percent": 17.53
+      },
+      "validity": {
+        "passed": true,
+        "severity": "PASS",
+        "wer": 0.0
+      }
+    },
+    "control_phrase_v1": {
+      "sample_transcript": "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+      "transcript_determinism": "20/20 identical",
+      "metrics": {
+        "mean_rtf": 0.457434691570593,
+        "p50_rtf": 0.4568101437828745,
+        "p95_rtf": 0.4856835033151713,
+        "p99_rtf": 0.49866012821854433,
+        "mean_latency_ms": 1925.80,
+        "p50_latency_ms": 1923.17,
+        "p95_latency_ms": 2044.73,
+        "p99_latency_ms": 2099.36,
+        "cv_percent": 9.20
+      },
+      "validity": {
+        "passed": true,
+        "severity": "WARN",
+        "note": "exact_match=0% — expected, punctuation varies non-deterministically"
+      }
+    },
+    "noisy_v1": {
+      "sample_transcript": "I'm from the cutter lying off the coast.",
+      "transcript_determinism": "20/20 identical",
+      "metrics": {
+        "mean_rtf": 0.0893373963792743,
+        "p50_rtf": 0.09690154580758853,
+        "p95_rtf": 0.09963513012942778,
+        "p99_rtf": 0.10126277001721687,
+        "mean_latency_ms": 814.76,
+        "p50_latency_ms": 883.74,
+        "p95_latency_ms": 908.67,
+        "p99_latency_ms": 923.52,
+        "cv_percent": 15.69
+      },
+      "validity": {
+        "passed": true,
+        "severity": "PASS",
+        "wer": 0.222
+      }
+    }
+  }
+}
