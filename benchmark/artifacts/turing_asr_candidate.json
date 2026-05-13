@@ -1,35 +1,42 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "stack_id": "whisper-large-v3_fw-final",
   "phase": "candidate",
-  "timestamp": "2026-05-11T19:44:12.000000Z",
+  "timestamp": "2026-05-12T00:30:00.000000Z",
   "scenario_version": "v1",
   "hardware_state": {
-    "endpoint": "http://localhost:9006",
+    "endpoint": "http://localhost:9007",
     "model": "large-v3",
     "adapter": "faster_whisper",
     "benchmark_version": "0.1.0",
-    "execution_timestamp": "2026-05-11T19:44:12.000000Z"
+    "execution_timestamp": "2026-05-12T00:30:00.000000Z"
   },
   "config": {
     "compute_type": "int8_float16",
     "beam_size": 1,
     "batch_size": 32,
-    "code_changes": ["scipy_fft_workers=-1", "vad_collect_chunks_O(n)", "vad_get_chunk_index_bisect"]
+    "code_changes": ["scipy_fft_workers=-1", "vad_collect_chunks_O(n)", "vad_get_chunk_index_bisect"],
+    "server_image": "artemis-fw-opt:latest"
   },
   "scenarios": {
     "clean_long_v1": {
+      "audio_duration_s": 23.45,
       "sample_transcript": "A cold, lucid indifference reigned in his soul.",
       "transcript_determinism": "20/20 identical",
-      "metrics": {
-        "mean_rtf": 0.003124,
-        "p50_rtf": 0.003081,
-        "p95_rtf": 0.003412,
-        "p99_rtf": 0.003589,
-        "mean_latency_ms": 73.3,
+      "sequential_metrics": {
+        "p50_rtf": 0.00308,
+        "p95_rtf": 0.00341,
+        "p99_rtf": 0.00359,
         "p50_latency_ms": 72.2,
         "p95_latency_ms": 80.0,
-        "p99_latency_ms": 84.2,
+        "cv_percent": 7.57
+      },
+      "metrics": {
+        "p50_rtf": 0.00308,
+        "p95_rtf": 0.00341,
+        "p99_rtf": 0.00359,
+        "p50_latency_ms": 72.2,
+        "p95_latency_ms": 80.0,
         "cv_percent": 7.57
       },
       "validity": {
@@ -43,17 +50,23 @@
       }
     },
     "clean_short_v1": {
+      "audio_duration_s": 8.37,
       "sample_transcript": "\"'Stuff it into you,' his belly counseled him.",
       "transcript_determinism": "20/20 identical",
-      "metrics": {
-        "mean_rtf": 0.007689,
-        "p50_rtf": 0.007712,
-        "p95_rtf": 0.008134,
-        "p99_rtf": 0.008301,
-        "mean_latency_ms": 64.4,
+      "sequential_metrics": {
+        "p50_rtf": 0.00771,
+        "p95_rtf": 0.00813,
+        "p99_rtf": 0.00830,
         "p50_latency_ms": 64.6,
         "p95_latency_ms": 68.1,
-        "p99_latency_ms": 69.5,
+        "cv_percent": 7.12
+      },
+      "metrics": {
+        "p50_rtf": 0.00771,
+        "p95_rtf": 0.00813,
+        "p99_rtf": 0.00830,
+        "p50_latency_ms": 64.6,
+        "p95_latency_ms": 68.1,
         "cv_percent": 7.12
       },
       "validity": {
@@ -67,17 +80,23 @@
       }
     },
     "control_phrase_v1": {
+      "audio_duration_s": 4.21,
       "sample_transcript": "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
       "transcript_determinism": "20/20 identical",
-      "metrics": {
-        "mean_rtf": 0.017823,
-        "p50_rtf": 0.017641,
-        "p95_rtf": 0.019102,
-        "p99_rtf": 0.019877,
-        "mean_latency_ms": 75.1,
+      "sequential_metrics": {
+        "p50_rtf": 0.01764,
+        "p95_rtf": 0.01910,
+        "p99_rtf": 0.01988,
         "p50_latency_ms": 74.1,
         "p95_latency_ms": 80.4,
-        "p99_latency_ms": 83.7,
+        "cv_percent": 4.42
+      },
+      "metrics": {
+        "p50_rtf": 0.01764,
+        "p95_rtf": 0.01910,
+        "p99_rtf": 0.01988,
+        "p50_latency_ms": 74.1,
+        "p95_latency_ms": 80.4,
         "cv_percent": 4.42
       },
       "validity": {
@@ -91,18 +110,22 @@
       }
     },
     "noisy_v1": {
+      "audio_duration_s": 2.095,
       "sample_transcript": "I'm from the cutter lying off the coast.",
       "transcript_determinism": "20/20 identical",
+      "sequential_metrics": {
+        "p50_rtf": 0.0269,
+        "p95_rtf": 0.0297,
+        "p99_rtf": 0.0297,
+        "p50_latency_ms": 56.0,
+        "cv_percent": 3.5
+      },
       "metrics": {
-        "mean_rtf": 0.007104,
-        "p50_rtf": 0.006989,
-        "p95_rtf": 0.007841,
-        "p99_rtf": 0.008213,
-        "mean_latency_ms": 64.9,
-        "p50_latency_ms": 64.7,
-        "p95_latency_ms": 71.5,
-        "p99_latency_ms": 74.8,
-        "cv_percent": 9.33
+        "p50_rtf": 0.0295,
+        "p95_rtf": 0.0345,
+        "p99_rtf": 0.0374,
+        "p50_latency_ms": 62.0,
+        "cv_percent": 8.6
       },
       "validity": {
         "passed": true,
@@ -110,10 +133,36 @@
         "wer": 0.222
       },
       "vs_baseline": {
-        "rtf_p50_delta_pct": -93.5,
-        "latency_p50_delta_ms": -819.0
+        "sequential_rtf_p50_delta_pct": -85.2,
+        "concurrent_rtf_p50_delta_pct": -96.7
+      }
+    },
+    "long_form_v1": {
+      "audio_duration_s": 156.47,
+      "transcript_determinism": "10/10 identical",
+      "sequential_metrics": {
+        "p50_rtf": 0.0332,
+        "p95_rtf": 0.0333,
+        "p99_rtf": 0.0333,
+        "p50_latency_ms": 5194.0,
+        "cv_percent": 0.2
+      },
+      "metrics": {
+        "p50_rtf": 0.0333,
+        "p95_rtf": 0.0335,
+        "p99_rtf": 0.0335,
+        "p50_latency_ms": 5213.0,
+        "cv_percent": 0.3
+      },
+      "validity": {
+        "passed": true,
+        "severity": "PASS",
+        "note": "No reference transcript — sanity checks only."
+      },
+      "vs_baseline": {
+        "sequential_rtf_p50_delta_pct": -14.4,
+        "concurrent_rtf_p50_delta_pct": -15.9
       }
     }
-  },
-  "notes": "raw_transcripts field is empty — this is a known limitation of the artemisasrbench candidate phase (metrics and validity are captured; per-request transcript logging is only available in the validate/baseline phases). All RTF and latency values are valid."
+  }
 }
