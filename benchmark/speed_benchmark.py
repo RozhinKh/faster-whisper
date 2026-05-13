@@ -61,6 +61,16 @@ def _vram_mib(device_index: int):
         return None
 
 
+def _vram_delta(device_index: int, fn):
+    """Call fn() and return (vram_before, vram_after, delta) in MiB."""
+    before = _vram_mib(device_index)
+    fn()
+    after = _vram_mib(device_index)
+    if before is None or after is None:
+        return None, None, None
+    return before, after, after - before
+
+
 if args.compare:
     CONFIGS = [
         {
@@ -86,6 +96,7 @@ if args.compare:
         print(f"{'='*60}")
         sys.stdout.flush()
 
+        vram_before = _vram_mib(args.device_index)
         fn = make_inference_fn(
             compute_type=config["compute_type"],
             beam_size=config["beam_size"],
@@ -95,8 +106,8 @@ if args.compare:
             device_index=args.device_index,
             language=args.language,
         )
-
-        vram = _vram_mib(args.device_index)
+        vram_after = _vram_mib(args.device_index)
+        vram_used = (vram_after - vram_before) if (vram_before and vram_after) else None
 
         print("  Warmup...")
         sys.stdout.flush()
@@ -109,8 +120,8 @@ if args.compare:
 
         print(f"  Raw totals : {[round(r, 3) for r in runtimes]}")
         print(f"  Min per run: {min_per_run:.3f}s")
-        if vram is not None:
-            print(f"  VRAM used  : {vram} MiB")
+        if vram_used is not None:
+            print(f"  VRAM used  : {vram_used} MiB  ({vram_before} → {vram_after} MiB)")
 
         results[config["name"]] = {
             "label": config["label"],
@@ -120,7 +131,7 @@ if args.compare:
             "runtimes": [round(r, 4) for r in runtimes],
             "min_per_run_s": round(min_per_run, 4),
             "median_per_run_s": round(statistics.median(runtimes) / args.number, 4),
-            "vram_mib": vram,
+            "vram_used_mib": vram_used,
         }
         del fn
 
@@ -136,9 +147,9 @@ if args.compare:
     print(f"  {c['label']}: {c['min_per_run_s']:.3f}s")
     print(f"\n  Speedup: {speedup:.2f}×  (−{pct:.1f}%)")
 
-    if b["vram_mib"] and c["vram_mib"]:
-        vram_pct = (b["vram_mib"] - c["vram_mib"]) / b["vram_mib"] * 100
-        print(f"  VRAM:    {b['vram_mib']} MiB → {c['vram_mib']} MiB  (−{vram_pct:.1f}%)")
+    if b["vram_used_mib"] and c["vram_used_mib"]:
+        vram_pct = (b["vram_used_mib"] - c["vram_used_mib"]) / b["vram_used_mib"] * 100
+        print(f"  VRAM:    {b['vram_used_mib']} MiB → {c['vram_used_mib']} MiB  (−{vram_pct:.1f}%)")
 
     print(f"{'='*60}")
 
