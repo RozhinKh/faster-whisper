@@ -168,71 +168,54 @@ The 13.36× CPU parallelism is measurable in isolation. Its wall-clock contribut
 
 ---
 
-## 7. Production API Benchmark (Turing ASR Benchmark)
+## 7. Speed Benchmark (Official faster-whisper methodology)
 
-Measured with `artemisasrbench` on the Turing-ASR-Benchmark suite. Both baseline and optimised ran sequentially on the same GPU (RTX 3090) to ensure a fair comparison.
+Measured with `benchmark/speed_benchmark.py --compare` using `benchmark.m4a` — the same script and audio used by the SYSTRAN/faster-whisper maintainers in their README benchmarks. Both configs run on the same GPU in the same process with no server or HTTP overhead. Parameters are the only variable.
 
-**Accuracy note:** The benchmark audio is English LibriSpeech. The production use case is French broadcast speech. WER=0.0% on these clips confirms the optimisation introduces no regression on English; the French accuracy characterisation is in Section 4 (ga_benchmark on French audio, mean WER 1.35%).
-
-### Measurement methodology
+### Methodology
 
 | Parameter | Value |
 |---|---|
+| Script | `benchmark/speed_benchmark.py` (SYSTRAN official) |
+| Audio | `benchmark/benchmark.m4a` (~13 min, French broadcast) |
 | Hardware | NVIDIA RTX 3090 24 GB |
-| Sequential runs | 20 (validity + per-request latency) |
-| Concurrent streams | 5–10 (scenario-dependent) |
-| Concurrent requests | 100 per scenario |
-| Timing scope | Wall-clock per HTTP request — no model load, no pre-read |
-| Throughput mechanism | `BatchedInferencePipeline`: groups concurrent requests into GPU batches up to `batch_size` before encoding. Higher concurrency fills batches more fully, reducing per-request latency. |
-
-The high throughput on short clips (125×, 325× RT) reflects concurrent batching: with `batch_size=32` and 5–10 parallel streams, the GPU processes multiple requests in one encoder pass. Per-request latency drops to ~65 ms even for 8–23s clips. This is a valid production metric for a multi-client API — it measures how fast each caller gets their result under realistic load, not single-threaded throughput.
+| Method | `timeit.repeat(repeat=3, number=10)` — min/10 reported |
+| Warmup | 1 full transcription before timing |
+| Model | faster-whisper-large-v3 |
 
 ### Setup
 
-| Component | Baseline | Optimised |
+| Parameter | Baseline | Optimised |
 |---|---|---|
-| Server | fedirz/faster-whisper-server | Custom image (this branch) |
 | compute_type | float16 | int8_float16 |
-| beam_size | 5 (default) | 1 |
-| batch_size | 16 (default) | 32 |
-| Code changes | — | scipy FFT, O(n) VAD |
+| beam_size | 5 | 1 |
+| batch_size | 16 | 32 |
 
 ### Results
 
-**Sequential P50 RTF** (single isolated request, no queuing)
+| Config | Min per run | Raw totals (3 reps × 10 runs) |
+|---|---|---|
+| Baseline  (float16,      beam=5, batch=16) | **9.991s** | 114.671, 100.329, 99.909 |
+| Candidate (int8_float16, beam=1, batch=32) | **7.246s** | 72.869, 72.931, 72.459 |
 
-| Scenario | Audio | Baseline | Optimised | Speedup |
-|---|---|---|---|---|
-| long_form_v1 | 156.5s | 0.0388 (25.8× RT) | 0.0333 (30.1× RT) | **1.17×** |
-| clean_long_v1 | 23.45s | 0.01627 (61.5× RT) | 0.00308 (325× RT) | **5.3×** |
-| noisy_v1 | 2.10s | 0.1822 (5.5× RT) | 0.0269 (37× RT) | **6.8×** |
+**Speedup: 1.38× (−27.5%)**
 
-**Concurrent P50 RTF** (100 requests, 5–10 parallel streams — primary API metric)
+The candidate variance across repetitions is 0.47s (0.6%) — highly stable. The baseline first repetition (114.671s) reflects GPU cold-start at float16; the min-based methodology correctly discards it.
 
-| Scenario | Audio | Baseline | Optimised | Latency P50 (opt) | Speedup |
-|---|---|---|---|---|---|
-| clean_long_v1 | 23.45s | 0.01627 (61.5× RT) | 0.00308 (325× RT) | 72 ms | **5.3×** |
-| clean_short_v1 | 8.37s | 0.13452 (7.4× RT) | 0.00771 (130× RT) | 65 ms | **17.4×** |
-| control_phrase_v1 | 4.21s | 0.45681 (2.2× RT) | 0.01764 (56.7× RT) | 74 ms | **25.9×** |
-| noisy_v1 | 2.10s | 0.8834 (1.1× RT) | 0.0295 (33.9× RT) | 62 ms | **29.9×** |
+This result cross-validates Section 3's ga_benchmark result (−27.0%) measured independently with a different timing method (20-run median). Both point to the same underlying gain.
 
-All scenarios passed accuracy validation (WER=0.0% on clean, WER=22.2% on noisy — same as baseline).
+### How the gain scales with audio length
 
-### How the numbers scale with audio length
+The optimisation targets long-form transcription. The speedup grows with audio length because beam=1 savings compound across 30-second encoder chunks:
 
-The same optimisation produces very different speedup depending on clip length. This is expected behaviour, not inconsistency:
+| Audio length | Speedup | Source |
+|---|---|---|
+| 4–10s (1 chunk) | 1.02–1.09× | scenario_latency_benchmark (direct model) |
+| 156s (~5 chunks) | 1.14× | scenario_latency_benchmark (direct model) |
+| ~780s (~26 chunks) | **1.37×** | ga_benchmark (20-run median) |
+| ~780s (~26 chunks) | **1.38×** | speed_benchmark (timeit, this section) |
 
-| Audio length | Baseline (× RT) | Optimised (× RT) | Speedup | What limits baseline | Source |
-|---|---|---|---|---|---|
-| 2.1s | 1.1× | 34× | **30×** | Decoder search dominates | ASR bench concurrent |
-| 4–8s | 2–7× | 57–130× | **17–26×** | Decoder + GPU warmup | ASR bench concurrent |
-| 23.5s | 62× | 325× | **5.3×** | GPU begins to saturate | ASR bench concurrent |
-| 156s | 25.8× | 30.1× | **1.17×** | GPU utilisation varies by content | ASR bench sequential |
-| 780s | 76.5× | 104.8× | **1.37×** | Full pipeline, all stages | ga_benchmark sequential |
-
-The large gains at short lengths reflect beam=5 decoder overhead being disproportionate to audio content. beam=1 collapses this to a single-pass argmax, dropping per-request latency to ~65 ms regardless of clip length. The long-form rows (156s, 780s) show the underlying encoder/pipeline speedup (1.2–1.4×) once the decoder is no longer the bottleneck.
-
-**Bottom line: −27% for batch processing of long files, 5–30× speedup for a real-time API serving short concurrent requests.**
+At short clip lengths (≤30s), the GPU encoder always processes a full 30-second window regardless of audio content, so beam search overhead is a small fraction of total time and savings are modest. At long-form lengths, each additional chunk saves decoder work and the gains compound.
 
 ---
 
