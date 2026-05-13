@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import json
+import os
 import statistics
 import sys
 import timeit
@@ -49,11 +50,28 @@ def measure_speed(func: Callable[[], None]):
     return runtimes
 
 
+def _physical_gpu_index(device_index: int) -> int:
+    """Resolve CUDA logical device index to physical nvml index.
+
+    CUDA_VISIBLE_DEVICES=3 means logical index 0 maps to physical GPU 3.
+    nvmlDeviceGetHandleByIndex always uses physical indices, so we must
+    translate before calling it.
+    """
+    cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    if cuda_visible:
+        try:
+            physical = [int(x.strip()) for x in cuda_visible.split(",")]
+            return physical[device_index]
+        except (ValueError, IndexError):
+            pass
+    return device_index
+
+
 def _vram_mib(device_index: int):
     try:
         import py3nvml.py3nvml as nvml
         nvml.nvmlInit()
-        handle = nvml.nvmlDeviceGetHandleByIndex(device_index)
+        handle = nvml.nvmlDeviceGetHandleByIndex(_physical_gpu_index(device_index))
         used = nvml.nvmlDeviceGetMemoryInfo(handle).used >> 20
         nvml.nvmlShutdown()
         return used
