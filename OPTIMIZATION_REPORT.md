@@ -56,16 +56,17 @@ Added `preprocessing_time_s` as an independently timed metric (median of 5 stand
 
 All runs: full benchmark audio (~13 min), GPU 3 (RTX 3090), single-GPU mode, sequential baseline then optimised.
 
-### Performance Metrics (20-run median)
+### Performance Metrics
 
-| Metric | Baseline | Optimised | Change |
-|---|---|---|---|
-| Transcription time | 10.200s | 7.442s | **−27.0%** |
-| Throughput | 78.358× real-time | 107.388× real-time | **+37.0%** |
-| VRAM used | 4,581 MiB | 2,789 MiB | **−39.1%** |
-| Preprocessing time | 1.661s | 1.526s | **−8.1%** |
-| VAD time | 1.644s | 1.506s | −8.4% |
-| FFT time | 0.017s | 0.018s | — |
+| Metric | Baseline | Optimised | Change | Source |
+|---|---|---|---|---|
+| Transcription time (min) | 9.995s | 7.332s | **−26.7%** | speed_benchmark.py |
+| Transcription time (median) | 10.022s | 7.359s | **−26.6%** | speed_benchmark.py |
+| Speedup | — | — | **1.36×** | speed_benchmark.py |
+| VRAM used | 4,003 MiB | 1,824 MiB | **−54.4%** | speed_benchmark.py |
+| Preprocessing time | 1.661s | 1.526s | **−8.1%** | ga_benchmark (20-run median) |
+| VAD time | 1.644s | 1.506s | −8.4% | ga_benchmark |
+| FFT time | 0.017s | 0.018s | — | ga_benchmark |
 
 ### Variance (20-run)
 
@@ -193,16 +194,16 @@ Measured with `benchmark/speed_benchmark.py --compare` using `benchmark.m4a` —
 
 ### Results
 
-| Config | Min per run | Raw totals (3 reps × 10 runs) |
-|---|---|---|
-| Baseline  (float16,      beam=5, batch=16) | **9.991s** | 114.671, 100.329, 99.909 |
-| Candidate (int8_float16, beam=1, batch=32) | **7.246s** | 72.869, 72.931, 72.459 |
+| Config | Min per run | Median per run | VRAM | Raw totals (3 reps × 10 runs) |
+|---|---|---|---|---|
+| Baseline  (float16,      beam=5, batch=16) | **9.995s** | 10.022s | 4,003 MiB | 100.221, 99.954, 100.396 |
+| Candidate (int8_float16, beam=1, batch=32) | **7.332s** | 7.359s | 1,824 MiB | 73.316, 74.038, 73.589 |
 
-**Speedup: 1.38× (−27.5%)**
+**Speedup: 1.36× (−26.7%) — VRAM: −54.4% (4,003 → 1,824 MiB)**
 
-The candidate variance across repetitions is 0.47s (0.6%) — highly stable. The baseline first repetition (114.671s) reflects GPU cold-start at float16; the min-based methodology correctly discards it.
+Candidate variance across 3 repetitions: 0.72s (1.0%) — highly stable. Both configs show tight variance confirming the GPU was warm and uncontended throughout the run.
 
-This result cross-validates Section 3's ga_benchmark result (−27.0%) measured independently with a different timing method (20-run median). Both point to the same underlying gain.
+This cross-validates Section 3's ga_benchmark result (−27.0%) measured independently with a different timing method (20-run median on a different audio file). Both point to the same underlying gain.
 
 ### How the gain scales with audio length
 
@@ -213,7 +214,7 @@ The optimisation targets long-form transcription. The speedup grows with audio l
 | 4–10s (1 chunk) | 1.02–1.09× | scenario_latency_benchmark (direct model) |
 | 156s (~5 chunks) | 1.14× | scenario_latency_benchmark (direct model) |
 | ~780s (~26 chunks) | **1.37×** | ga_benchmark (20-run median) |
-| ~780s (~26 chunks) | **1.38×** | speed_benchmark (timeit, this section) |
+| ~780s (~26 chunks) | **1.36×** | speed_benchmark (timeit, this section) |
 
 At short clip lengths (≤30s), the GPU encoder always processes a full 30-second window regardless of audio content, so beam search overhead is a small fraction of total time and savings are modest. At long-form lengths, each additional chunk saves decoder work and the gains compound.
 
