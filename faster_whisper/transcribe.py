@@ -283,7 +283,7 @@ class BatchedInferencePipeline:
         without_timestamps: bool = True,
         max_initial_timestamp: float = 1.0,
         word_timestamps: bool = False,
-        prepend_punctuations: str = "\"'“¿([{-",
+        prepend_punctuations: str = "\"'¿([{-",
         append_punctuations: str = "\"'.。,，!！?？:：”)]}、",
         multilingual: bool = False,
         vad_filter: bool = True,
@@ -776,8 +776,8 @@ class WhisperModel:
         without_timestamps: bool = False,
         max_initial_timestamp: float = 1.0,
         word_timestamps: bool = False,
-        prepend_punctuations: str = "\"'"¿([{-",
-        append_punctuations: str = "\"'.。,,!!??::")]}、",
+        prepend_punctuations: str = "\"'¿([{-",
+        append_punctuations: str = "\"'.。,,!!??::”)]}、",
         multilingual: bool = False,
         vad_filter: bool = False,
         vad_parameters: Optional[Union[dict, VadOptions]] = None,
@@ -1133,7 +1133,7 @@ class WhisperModel:
             zip(seek_points[::2], seek_points[1::2])
         )
 
-        punctuation = "\"'“¿([{-\"'.。,，!！?？:：”)]}、"
+        punctuation = "\"'¿([{-\"'.。,，!！?？:：”)]}、"
 
         idx = 0
         clip_idx = 0
