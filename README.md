@@ -10,12 +10,13 @@
 
 Artemis identified a high-impact parameter combination for faster-whisper large-v3 on RTX 3090 + Xeon Gold 6230. Combined with code-level preprocessing improvements, the optimisation delivers:
 
-| Metric | Improvement |
-|---|---|
-| Transcription time (13 min audio) | **−27.0%** |
-| Throughput | **78× → 107× real-time** |
-| VRAM usage | **−39.1%** |
-| API latency (short concurrent requests) | **−81% to −96% RTF** |
+| Metric | Baseline | Optimised | Change |
+|---|---|---|---|
+| Transcription time (13 min audio) | 9.995s | 7.332s | **−26.7% (1.36×)** |
+| VRAM usage | 4,003 MiB | 1,824 MiB | **−54.4%** |
+| Preprocessing time | 1.661s | 1.526s | **−8.1%** |
+
+Measured with `benchmark/speed_benchmark.py --compare` on `benchmark.m4a` — the official faster-whisper benchmark methodology (`timeit.repeat(repeat=3, number=10)`).
 
 **[→ Full Optimization Report](OPTIMIZATION_REPORT.md)**
 
