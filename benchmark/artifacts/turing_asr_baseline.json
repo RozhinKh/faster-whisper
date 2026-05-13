@@ -1,0 +1,326 @@
+{
+  "endpoint": "http://localhost:9001",
+  "model": "large-v3",
+  "validity_passed": true,
+  "sequential": {
+    "clean_long_v1": {
+      "runs": 20,
+      "successful": 20,
+      "errors": 0,
+      "metrics": {
+        "mean_rtf": 0.01631120588781356,
+        "p50_rtf": 0.016248158848425474,
+        "p95_rtf": 0.017204102335263417,
+        "p99_rtf": 0.017204102335263417,
+        "mean_latency_ms": 382.49777806922793,
+        "p50_latency_ms": 381.01932499557734,
+        "p95_latency_ms": 403.4361997619271,
+        "p99_latency_ms": 403.4361997619271,
+        "cv_percent": 1.6737978409040202
+      },
+      "raw_transcripts": [
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul.",
+        "A cold, lucid indifference reigned in his soul."
+      ]
+    },
+    "clean_short_v1": {
+      "runs": 20,
+      "successful": 20,
+      "errors": 0,
+      "metrics": {
+        "mean_rtf": 0.04436551546511043,
+        "p50_rtf": 0.044307180345414504,
+        "p95_rtf": 0.04486579919765785,
+        "p99_rtf": 0.04486579919765785,
+        "mean_latency_ms": 371.33936444297433,
+        "p50_latency_ms": 370.8510994911194,
+        "p95_latency_ms": 375.52673928439617,
+        "p99_latency_ms": 375.52673928439617,
+        "cv_percent": 0.6009023769779344
+      },
+      "raw_transcripts": [
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him.",
+        "\"'Stuff it into you,' his belly counseled him."
+      ]
+    },
+    "control_phrase_v1": {
+      "runs": 20,
+      "successful": 20,
+      "errors": 0,
+      "metrics": {
+        "mean_rtf": 0.14642163669809946,
+        "p50_rtf": 0.14650232187359463,
+        "p95_rtf": 0.15015711702601078,
+        "p99_rtf": 0.15015711702601078,
+        "mean_latency_ms": 616.4350904989988,
+        "p50_latency_ms": 616.7747750878334,
+        "p95_latency_ms": 632.1614626795053,
+        "p99_latency_ms": 632.1614626795053,
+        "cv_percent": 0.9823595323308917
+      },
+      "raw_transcripts": [
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce.",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce."
+      ]
+    },
+    "long_form_v1": {
+      "runs": 10,
+      "successful": 10,
+      "errors": 0,
+      "metrics": {
+        "mean_rtf": 0.038764924720437285,
+        "p50_rtf": 0.0387247743179903,
+        "p95_rtf": 0.038930134987158006,
+        "p99_rtf": 0.038930134987158006,
+        "mean_latency_ms": 6065.547771006823,
+        "p50_latency_ms": 6059.265437535942,
+        "p95_latency_ms": 6091.398221440613,
+        "p99_latency_ms": 6091.398221440613,
+        "cv_percent": 0.24366447462995947
+      },
+      "raw_transcripts": [
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce. Stuff it into you, his belly counseled him. After early nightfall, the yellow lamps would light up here and there, the squalid quarter of the brothels. Hello, Bertie. Any good in your mind? Number ten. Fresh Nellie is waiting on you. Good night, husband. He had a cold, indifferent knowledge of himself. At most, by an alms given to a beggar whose blessing he fled from, he might hope wearily to win for himself some measure of actual grace. Well now, Ennis, I declare you have a head and so has my stick. On Saturday mornings, when the Sodality met in the chapel to recite the little office, his place was a cushioned kneeling-desk at the right of the altar from which he led his wing of boys through the responses. At the end of the night, when he was about to go to bed, he heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce. Stuff it into you, his belly counseled him. After early nightfall, the yellow lamps would light up here and there, the squalid quarter of the brothels. Hello, Bertie. Any good in your mind? Number ten. Fresh Nellie is waiting on you. Good night, husband. He had a cold, indifferent knowledge of himself. At most, by an alms given to a beggar whose blessing he fled from, he might hope wearily to win for himself some measure of actual grace. Well now, Ennis, I declare you have a head and so has my stick. On Saturday mornings, when the Sodality met in the chapel to recite the little office, his place was a cushioned kneeling-desk at the right of the altar from which he led his wing of boys through the responses. At the end of the night, when he was about to go to bed, he heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce. Stuff it into you, his belly counseled him. After early nightfall, the yellow lamps would light up here and there, the squalid quarter of the brothels. Hello, Bertie. Any good in your mind? Number ten. Fresh Nellie is waiting on you. Good night, husband. He had a cold, indifferent knowledge of himself. At most, by an alms given to a beggar whose blessing he fled from, he might hope wearily to win for himself some measure of actual grace. Well now, Ennis, I declare you have a head and so has my stick. On Saturday mornings, when the Sodality met in the chapel to recite the little office, his place was a cushioned kneeling-desk at the right of the altar from which he led his wing of boys through the responses. At the end of the night, when he was about to go to bed, he heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce. Stuff it into you, his belly counseled him. After early nightfall, the yellow lamps would light up here and there, the squalid quarter of the brothels. Hello, Bertie. Any good in your mind? Number ten. Fresh Nellie is waiting on you. Good night, husband. He had a cold, indifferent knowledge of himself. At most, by an alms given to a beggar whose blessing he fled from, he might hope wearily to win for himself some measure of actual grace. Well now, Ennis, I declare you have a head and so has my stick. On Saturday mornings, when the Sodality met in the chapel to recite the little office, his place was a cushioned kneeling-desk at the right of the altar from which he led his wing of boys through the responses. At the end of the night, when he was about to go to bed, he heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce. Stuff it into you, his belly counseled him. After early nightfall, the yellow lamps would light up here and there, the squalid quarter of the brothels. Hello, Bertie. Any good in your mind? Number ten. Fresh Nellie is waiting on you. Good night, husband. He had a cold, indifferent knowledge of himself. At most, by an alms given to a beggar whose blessing he fled from, he might hope wearily to win for himself some measure of actual grace. Well now, Ennis, I declare you have a head and so has my stick. On Saturday mornings, when the Sodality met in the chapel to recite the little office, his place was a cushioned kneeling-desk at the right of the altar from which he led his wing of boys through the responses. At the end of the night, when he was about to go to bed, he heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce. Stuff it into you, his belly counseled him. After early nightfall, the yellow lamps would light up here and there, the squalid quarter of the brothels. Hello, Bertie. Any good in your mind? Number ten. Fresh Nellie is waiting on you. Good night, husband. He had a cold, indifferent knowledge of himself. At most, by an alms given to a beggar whose blessing he fled from, he might hope wearily to win for himself some measure of actual grace. Well now, Ennis, I declare you have a head and so has my stick. On Saturday mornings, when the Sodality met in the chapel to recite the little office, his place was a cushioned kneeling-desk at the right of the altar from which he led his wing of boys through the responses. At the end of the night, when he was about to go to bed, he heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce. Stuff it into you, his belly counseled him. After early nightfall, the yellow lamps would light up here and there, the squalid quarter of the brothels. Hello, Bertie. Any good in your mind? Number ten. Fresh Nellie is waiting on you. Good night, husband. He had a cold, indifferent knowledge of himself. At most, by an alms given to a beggar whose blessing he fled from, he might hope wearily to win for himself some measure of actual grace. Well now, Ennis, I declare you have a head and so has my stick. On Saturday mornings, when the Sodality met in the chapel to recite the little office, his place was a cushioned kneeling-desk at the right of the altar from which he led his wing of boys through the responses. At the end of the night, when he was about to go to bed, he heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce. Stuff it into you, his belly counseled him. After early nightfall, the yellow lamps would light up here and there, the squalid quarter of the brothels. Hello, Bertie. Any good in your mind? Number ten. Fresh Nellie is waiting on you. Good night, husband. He had a cold, indifferent knowledge of himself. At most, by an alms given to a beggar whose blessing he fled from, he might hope wearily to win for himself some measure of actual grace. Well now, Ennis, I declare you have a head and so has my stick. On Saturday mornings, when the Sodality met in the chapel to recite the little office, his place was a cushioned kneeling-desk at the right of the altar from which he led his wing of boys through the responses. At the end of the night, when he was about to go to bed, he heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce. Stuff it into you, his belly counseled him. After early nightfall, the yellow lamps would light up here and there, the squalid quarter of the brothels. Hello, Bertie. Any good in your mind? Number ten. Fresh Nellie is waiting on you. Good night, husband. He had a cold, indifferent knowledge of himself. At most, by an alms given to a beggar whose blessing he fled from, he might hope wearily to win for himself some measure of actual grace. Well now, Ennis, I declare you have a head and so has my stick. On Saturday mornings, when the Sodality met in the chapel to recite the little office, his place was a cushioned kneeling-desk at the right of the altar from which he led his wing of boys through the responses. At the end of the night, when he was about to go to bed, he heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard",
+        "He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered, flour-fattened sauce. Stuff it into you, his belly counseled him. After early nightfall, the yellow lamps would light up here and there, the squalid quarter of the brothels. Hello, Bertie. Any good in your mind? Number ten. Fresh Nellie is waiting on you. Good night, husband. He had a cold, indifferent knowledge of himself. At most, by an alms given to a beggar whose blessing he fled from, he might hope wearily to win for himself some measure of actual grace. Well now, Ennis, I declare you have a head and so has my stick. On Saturday mornings, when the Sodality met in the chapel to recite the little office, his place was a cushioned kneeling-desk at the right of the altar from which he led his wing of boys through the responses. At the end of the night, when he was about to go to bed, he heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard a voice in the corner of the room, and it seemed to him that he had heard"
+      ]
+    },
+    "noisy_v1": {
+      "runs": 20,
+      "successful": 20,
+      "errors": 0,
+      "metrics": {
+        "mean_rtf": 0.06192236121103213,
+        "p50_rtf": 0.06190837005078485,
+        "p95_rtf": 0.06302705055714636,
+        "p99_rtf": 0.06302705055714636,
+        "mean_latency_ms": 601.266127359122,
+        "p50_latency_ms": 601.130273193121,
+        "p95_latency_ms": 611.9926609098911,
+        "p99_latency_ms": 611.9926609098911,
+        "cv_percent": 0.6095441752801147
+      },
+      "raw_transcripts": [
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could",
+        "the kick he had received was a foretaste of what he might expect and after a little consideration he came to the conclusion that his duty was to escape and get back to the cutter as quickly as he could"
+      ]
+    }
+  },
+  "validity": {
+    "clean_long_v1": {
+      "passed": true,
+      "severity": "PASS",
+      "checks": [
+        {
+          "layer": 3,
+          "name": "WER",
+          "passed": true,
+          "severity": "PASS",
+          "message": "Mean WER: 0.000",
+          "score": 0.0
+        }
+      ],
+      "wer": 0.0
+    },
+    "clean_short_v1": {
+      "passed": true,
+      "severity": "PASS",
+      "checks": [
+        {
+          "layer": 3,
+          "name": "WER",
+          "passed": true,
+          "severity": "PASS",
+          "message": "Mean WER: 0.000",
+          "score": 0.0
+        }
+      ],
+      "wer": 0.0
+    },
+    "control_phrase_v1": {
+      "passed": true,
+      "severity": "PASS",
+      "checks": []
+    },
+    "long_form_v1": {
+      "passed": true,
+      "severity": "PASS",
+      "checks": []
+    },
+    "noisy_v1": {
+      "passed": true,
+      "severity": "PASS",
+      "checks": [
+        {
+          "layer": 3,
+          "name": "WER",
+          "passed": true,
+          "severity": "PASS",
+          "message": "Mean WER: 0.000",
+          "score": 0.0
+        }
+      ],
+      "wer": 0.0
+    }
+  },
+  "workload": {
+    "clean_long_v1": {
+      "requests": 50,
+      "successful": 50,
+      "errors": 0,
+      "metrics": {
+        "mean_rtf": 0.01632044317323897,
+        "p50_rtf": 0.01630766253703947,
+        "p95_rtf": 0.017099502021824118,
+        "p99_rtf": 0.01734283996988207,
+        "mean_latency_ms": 382.7143924124539,
+        "p50_latency_ms": 382.4146864935756,
+        "p95_latency_ms": 400.9833224117756,
+        "p99_latency_ms": 406.68959729373455,
+        "cv_percent": 1.914062874354117
+      }
+    },
+    "clean_short_v1": {
+      "requests": 100,
+      "successful": 100,
+      "errors": 0,
+      "metrics": {
+        "mean_rtf": 0.15974648185897722,
+        "p50_rtf": 0.18808578075384869,
+        "p95_rtf": 0.1983538089740661,
+        "p99_rtf": 0.2005914554418273,
+        "mean_latency_ms": 1337.0780531596392,
+        "p50_latency_ms": 1574.2779849097133,
+        "p95_latency_ms": 1660.2213811129332,
+        "p99_latency_ms": 1678.9504820480943,
+        "cv_percent": 26.97971899756161
+      }
+    },
+    "control_phrase_v1": {
+      "requests": 100,
+      "successful": 100,
+      "errors": 0,
+      "metrics": {
+        "mean_rtf": 1.0598064550461863,
+        "p50_rtf": 1.1426940642191084,
+        "p95_rtf": 1.149427512718139,
+        "p99_rtf": 1.1656612067122782,
+        "mean_latency_ms": 4461.785175744444,
+        "p50_latency_ms": 4810.742010362446,
+        "p95_latency_ms": 4839.089828543365,
+        "p99_latency_ms": 4907.433680258691,
+        "cv_percent": 20.15980745642793
+      }
+    },
+    "long_form_v1": {
+      "requests": 5,
+      "successful": 5,
+      "errors": 0,
+      "metrics": {
+        "mean_rtf": 0.03894546996599006,
+        "p50_rtf": 0.03888891799031503,
+        "p95_rtf": 0.03930575551154812,
+        "p99_rtf": 0.03930575551154812,
+        "mean_latency_ms": 6093.7976855784655,
+        "p50_latency_ms": 6084.948997944593,
+        "p95_latency_ms": 6150.171564891934,
+        "p99_latency_ms": 6150.171564891934,
+        "cv_percent": 0.5731110569436543
+      }
+    },
+    "noisy_v1": {
+      "requests": 100,
+      "successful": 100,
+      "errors": 0,
+      "metrics": {
+        "mean_rtf": 0.46350233804292595,
+        "p50_rtf": 0.489930978599249,
+        "p95_rtf": 0.5079789513992539,
+        "p99_rtf": 0.5090739938644375,
+        "mean_latency_ms": 4500.60770239681,
+        "p50_latency_ms": 4757.229802198708,
+        "p95_latency_ms": 4932.475618086755,
+        "p99_latency_ms": 4943.108480423689,
+        "cv_percent": 18.61435541105898
+      }
+    }
+  }
+}
