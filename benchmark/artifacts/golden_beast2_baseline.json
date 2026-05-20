@@ -1,0 +1,26 @@
+{
+  "machine": "Golden Beast 2 (DXGA100)",
+  "hardware": {
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_count": 8,
+    "vram_total_mib": 81920,
+    "cuda_device_used": 4
+  },
+  "software": {
+    "faster_whisper": "1.2.1",
+    "ctranslate2": "4.7.2",
+    "onnxruntime": "1.23.2",
+    "cuda": "12.9"
+  },
+  "baseline": {
+    "label": "Baseline (float16, beam=5, batch=16)",
+    "compute_type": "float16",
+    "beam_size": 5,
+    "batch_size": 16,
+    "runtimes": [76.22],
+    "repeat": 1,
+    "number": 3,
+    "min_per_run_s": 25.407,
+    "vram_used_mib": 12961
+  }
+}
