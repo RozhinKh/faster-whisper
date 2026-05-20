@@ -220,7 +220,56 @@ At short clip lengths (≤30s), the GPU encoder always processes a full 30-secon
 
 ---
 
-## 8. Summary
+## 8. Artemis ASR Bench — Service-Level Validation (Beast3, RTX 3090)
+
+Validated using `artemisasrbench` — HTTP-level benchmark against `server.py` running on Beast3. 9 scenarios covering clean, noisy, telephone, and overlapping speech conditions. All audio derived from LibriVox "A Scandal in Bohemia" Chapter 1 (~21 min).
+
+**Hardware:** NVIDIA RTX 3090 24 GB, Intel Xeon Gold 6230, faster-whisper 1.2.1, CTranslate2 4.7.2, CUDA 12.9
+
+### Validity Gate — 9/9 PASS on both baseline and candidate
+
+### RTF Delta (concurrent P50, baseline → candidate)
+
+| Scenario | Baseline RTF | Candidate RTF | RTF Δ |
+|---|---|---|---|
+| long_form_v1 (~21 min, clean) | 0.0104 | 0.0082 | **−21.3%** |
+| clean_long_v1 (10 min, clean) | 0.0107 | 0.0084 | **−22.0%** |
+| clean_short_v1 (5 min, clean) | 0.0107 | 0.0093 | **−13.3%** |
+| noisy_snr20_v1 (~21 min, SNR 20 dB) | 0.0107 | 0.0086 | **−19.7%** |
+| noisy_snr10_v1 (~21 min, SNR 10 dB) | 0.0107 | 0.0084 | **−20.9%** |
+| noisy_snr5_v1 (~21 min, SNR 5 dB) | 0.0107 | 0.0087 | **−19.3%** |
+| overlapping_v1 (~21 min, −6 dB mix) | 0.0118 | 0.0089 | **−24.0%** |
+| telephone_v1 (~21 min, 300–3400 Hz) | 0.0071 | 0.0055 | **−22.2%** |
+| control_phrase_v1 (10.4 s) | 0.3637 | 0.3294 | **−9.5%** |
+
+All 9 scenarios improved. Short clips see less gain (fewer encoder chunks for beam savings to compound); long-form sees the full improvement — consistent with speed_benchmark scaling table.
+
+### Layer 1/2 Probe — Kernel/Compute + Memory/IO
+
+| Metric | Baseline | Candidate | Change |
+|---|---|---|---|
+| VRAM (long_form_v1) | 4,839 MiB | 2,951 MiB | **−39%** |
+| model_ms (long_form_v1) | 13,184 ms | 10,593 ms | **−19.6%** |
+| encoder_throughput_x (long_form_v1) | 96× | 120× | **+25%** |
+| decode_tokens_per_s (long_form_v1) | 266/s | 328/s | **+23%** |
+
+### Layer 4 — Decoder Overhead (beam search cost saved)
+
+| Scenario | ms saved | % of decoder |
+|---|---|---|
+| overlapping_v1 | 3,756 ms | 25.2% |
+| noisy_snr10_v1 | 2,874 ms | 21.2% |
+| long_form_v1 | 2,590 ms | 19.6% |
+| telephone_v1 | 1,908 ms | 21.3% |
+| clean_long_v1 | 1,502 ms | 23.2% |
+| clean_short_v1 | 404 ms | 12.4% |
+| control_phrase_v1 | 24 ms | 4.5% |
+
+The service-level RTF improvement (−19 to −24%) is slightly below the direct model measurement (−26.7%) due to HTTP overhead. Both measurements confirm the same underlying gain.
+
+---
+
+## 9. Summary
 
 Artemis found a parameter combination (compute_type=int8_float16, batch_size=32, beam_size=1) that reduces transcription time by 27.0% and increases throughput from 78× to 107× real-time. VRAM usage dropped 39.1% as a side effect of int8 quantization — a significant benefit for concurrent workloads on a shared multi-GPU server.
 
