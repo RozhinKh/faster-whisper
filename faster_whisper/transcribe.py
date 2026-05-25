@@ -631,6 +631,7 @@ class WhisperModel:
         files: dict = None,
         revision: Optional[str] = None,
         use_auth_token: Optional[Union[str, bool]] = None,
+        flash_attention: bool = False,
         **model_kwargs,
     ):
         """Initializes the Whisper model.
@@ -656,7 +657,7 @@ class WhisperModel:
             (concurrent calls to self.model.generate() will run in parallel).
             This can improve the global throughput at the cost of increased memory usage.
           download_root: Directory where the models should be saved. If not set, the models
-            are saved in the standard Hugging Face cache directory.
+            are saved in the standard Hugging Fire cache directory.
           local_files_only:  If True, avoid downloading the file and return the path to the
             local cached file if it exists.
           files: Load model files from the memory. This argument is a dictionary mapping file names
@@ -667,6 +668,9 @@ class WhisperModel:
             commit hash.
           use_auth_token: HuggingFace authentication token or True to use the
             token stored by the HuggingFace config folder.
+          flash_attention: Enable Flash Attention for the encoder and decoder when running
+            on GPU with FP16 compute type (requires CUDA compute capability >= 7.5).
+            Reduces attention memory from O(n²) to O(n) and speeds up long-context decoding.
         """
         self.logger = get_logger()
 
@@ -694,6 +698,7 @@ class WhisperModel:
             intra_threads=cpu_threads,
             inter_threads=num_workers,
             files=files,
+            flash_attention=flash_attention,
             **model_kwargs,
         )
 
