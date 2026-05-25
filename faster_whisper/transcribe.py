@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import zlib
-from concurrent.futures import ThreadPoolExecutor
 
 from dataclasses import asdict, dataclass
 from inspect import signature
@@ -461,16 +460,11 @@ class BatchedInferencePipeline:
             format_timestamp(duration - duration_after_vad),
         )
 
-        if duration_after_vad:
-            n_workers = min(len(audio_chunks), os.cpu_count() or 4, 8)
-            if n_workers > 1:
-                extractor = self.model.feature_extractor
-                with ThreadPoolExecutor(max_workers=n_workers) as pool:
-                    features = list(pool.map(lambda c: extractor(c)[..., :-1], audio_chunks))
-            else:
-                features = [self.model.feature_extractor(chunk)[..., :-1] for chunk in audio_chunks]
-        else:
-            features = []
+        features = (
+            [self.model.feature_extractor(chunk)[..., :-1] for chunk in audio_chunks]
+            if duration_after_vad
+            else []
+        )
 
         all_language_probs = None
         # detecting the language if not provided
