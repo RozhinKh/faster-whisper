@@ -33,6 +33,12 @@ parser.add_argument("--number",       type=int, default=10,
                     help="Transcriptions per repetition.")
 parser.add_argument("--compare",      action="store_true",
                     help="Run baseline vs candidate comparison (speed + VRAM).")
+parser.add_argument("--compute-type", default="float16",
+                    help="CTranslate2 compute type.")
+parser.add_argument("--beam-size",    type=int, default=5,
+                    help="Beam size.")
+parser.add_argument("--batch-size",   type=int, default=16,
+                    help="Batch size (BatchedInferencePipeline).")
 parser.add_argument("--device",       default="cuda")
 parser.add_argument("--device-index", type=int, default=0)
 parser.add_argument("--language",     default="fr")
@@ -180,4 +186,23 @@ if args.compare:
         print(f"\n  Saved → {args.output}")
 
 else:
-    measure_speed(inference)
+    print(f"\n{'='*60}")
+    print(f"  faster-whisper large-v3  |  compute={args.compute_type}  beam={args.beam_size}  batch={args.batch_size}")
+    print(f"  compute={args.compute_type}  beam={args.beam_size}  batch={args.batch_size}")
+    print(f"{'='*60}")
+    fn = make_inference_fn(
+        compute_type=args.compute_type,
+        beam_size=args.beam_size,
+        batch_size=args.batch_size,
+        batched=True,
+        device=args.device,
+        device_index=args.device_index,
+        language=args.language,
+    )
+    print("  Warmup...")
+    fn()
+    print(f"  Timing (repeat={args.repeat}, number={args.number})...")
+    runtimes = timeit.repeat(fn, repeat=args.repeat, number=args.number)
+    min_per_run = min(runtimes) / args.number
+    print(f"  Raw totals : {[round(r, 3) for r in runtimes]}")
+    print(f"  Min per run: {min_per_run:.3f}s")
