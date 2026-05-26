@@ -74,6 +74,9 @@ def main() -> None:
         "--beam-size", type=int, default=int(_env("BENCHMARK_BEAM_SIZE", "5"))
     )
     parser.add_argument(
+        "--batch-size", type=int, default=int(_env("BENCHMARK_BATCH_SIZE", "16"))
+    )
+    parser.add_argument(
         "--clip-seconds",
         type=float,
         default=float(_env("BENCHMARK_CLIP_SECONDS", "45")),
@@ -102,6 +105,7 @@ def main() -> None:
         args.device_index,
         language=args.language,
         beam_size=args.beam_size,
+        batch_size=args.batch_size,
         clip_seconds=clip_seconds,
         timed_runs=args.timed_runs,
     )
