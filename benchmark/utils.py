@@ -7,7 +7,6 @@ from typing import Callable, Optional
 
 from faster_whisper import BatchedInferencePipeline, WhisperModel
 from faster_whisper.audio import decode_audio
-from faster_whisper.vad import VadOptions, get_speech_timestamps
 
 BENCHMARK_DIR = os.path.dirname(os.path.abspath(__file__))
 BENCHMARK_AUDIO = os.path.join(BENCHMARK_DIR, "benchmark.m4a")
@@ -68,27 +67,14 @@ def make_inference_fn(
     if batched:
         p = BatchedInferencePipeline(m)
 
-        # Pre-load audio and VAD once — each timeit call would otherwise
-        # re-decode a 21-min file and re-run silero VAD, which is I/O work
-        # unrelated to model inference. A real server decodes bytes once per
-        # request; this makes the benchmark match that behaviour.
+        # Pre-decode audio once — each timeit call would otherwise re-decode
+        # a 21-min file from disk, which is I/O unrelated to model inference.
+        # A real server decodes bytes once per request; this matches that.
         sr = m.feature_extractor.sampling_rate
-        chunk_length = m.feature_extractor.chunk_length
-
         t0 = time.perf_counter()
         _audio = decode_audio(BENCHMARK_AUDIO, sampling_rate=sr)
-        decode_ms = (time.perf_counter() - t0) * 1000
-
-        t0 = time.perf_counter()
-        _vad_opts = VadOptions(max_speech_duration_s=chunk_length, min_silence_duration_ms=160)
-        _raw_ts = get_speech_timestamps(_audio, _vad_opts)
-        vad_ms = (time.perf_counter() - t0) * 1000
-
-        # Convert sample-index timestamps → seconds for the public transcribe API
-        _clip_ts = [{"start": t["start"] / sr, "end": t["end"] / sr} for t in _raw_ts]
-
-        print(f"  [pre-load] decode={decode_ms:.0f}ms  vad={vad_ms:.0f}ms  "
-              f"speech_chunks={len(_raw_ts)}")
+        print(f"  [pre-load] decode={( time.perf_counter()-t0)*1000:.0f}ms  "
+              f"samples={len(_audio):,}")
 
         def _batched():
             segs, _ = p.transcribe(
@@ -96,7 +82,6 @@ def make_inference_fn(
                 language=language,
                 batch_size=batch_size,
                 beam_size=beam_size,
-                clip_timestamps=_clip_ts,
             )
             for _ in segs:
                 pass
