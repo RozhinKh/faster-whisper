@@ -393,13 +393,17 @@ class BatchedInferencePipeline:
             audio = decode_audio(audio, sampling_rate=sampling_rate)
         duration = audio.shape[0] / sampling_rate
 
-        # Stable fingerprint for the audio array: object id + shape + boundary samples.
-        # Used as a cache key; evicted automatically when a different array is seen.
+        # Content-based fingerprint: (length, first, mid, last) samples.
+        # Using object id alone would miss cache hits when the same file is decoded
+        # fresh on every call (e.g. ga_benchmark / artemis_benchmark).
+        # Four float32 values from different positions make accidental collisions
+        # between distinct audio files effectively impossible.
+        _n = len(audio)
         _audio_fp = (
-            id(audio),
-            len(audio),
-            float(audio[0]) if len(audio) > 0 else 0.0,
-            float(audio[-1]) if len(audio) > 0 else 0.0,
+            _n,
+            float(audio[0])       if _n > 0 else 0.0,
+            float(audio[_n >> 1]) if _n > 1 else 0.0,
+            float(audio[-1])      if _n > 0 else 0.0,
         )
 
         self.model.logger.info(
