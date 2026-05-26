@@ -57,6 +57,12 @@ def main():
     parser.add_argument("--model", default="large-v3")
     parser.add_argument("--device-index", type=int, default=1)
     parser.add_argument("--language", default="fr")
+    parser.add_argument("--beam-size", type=int, default=1,
+                        help="Beam size for optimised config (default 1).")
+    parser.add_argument("--batch-size", type=int, default=32,
+                        help="Batch size for optimised config (default 32).")
+    parser.add_argument("--compute-type", default="int8_float16",
+                        help="Compute type for optimised config (default int8_float16).")
     parser.add_argument("--output",
                         default="benchmark/artifacts/noise_validation.json")
     args = parser.parse_args()
@@ -83,9 +89,9 @@ def main():
                            device_index=args.device_index, compute_type="float16")
     pipe_b  = BatchedInferencePipeline(model_b)
 
-    print("Loading optimised model (int8_float16) ...")
+    print(f"Loading optimised model ({args.compute_type}, beam={args.beam_size}, batch={args.batch_size}) ...")
     model_o = WhisperModel(args.model, device="cuda",
-                           device_index=args.device_index, compute_type="int8_float16")
+                           device_index=args.device_index, compute_type=args.compute_type)
     pipe_o  = BatchedInferencePipeline(model_o)
 
     # Get clean reference transcript (baseline config on clean audio)
@@ -101,7 +107,7 @@ def main():
 
     for key, path, label in variants:
         base_text = _transcribe(model_b, pipe_b, path, 16, 5,  args.language)
-        opt_text  = _transcribe(model_o, pipe_o, path, 32, 1,  args.language)
+        opt_text  = _transcribe(model_o, pipe_o, path, args.batch_size, args.beam_size, args.language)
 
         wer_base = _wer(ref_text, base_text)
         wer_opt  = _wer(ref_text, opt_text)
@@ -121,8 +127,8 @@ def main():
     passed = sum(r["pass"] for r in results)
     print(f"\n  PASS RATE: {passed}/{len(results)}")
     print(f"  Note: WER is relative to clean baseline (float16/beam=5) transcript.")
+    print(f"  Optimised config: {args.compute_type}, beam={args.beam_size}, batch={args.batch_size}.")
     print(f"  Delta = optimised WER − baseline WER on same degraded audio.")
-    print(f"  Positive delta means beam=1 degrades more than beam=5 on that condition.")
 
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
