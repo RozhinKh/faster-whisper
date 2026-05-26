@@ -189,32 +189,46 @@ def test_cold_start(model_path, device, device_index, language, beam_size, batch
 # ---------------------------------------------------------------------------
 # 4. Concurrency
 # ---------------------------------------------------------------------------
-def _worker(model_path, device, device_index, language, beam_size, batch_size,
-            clip_seconds, worker_id):
-    pipeline = _load_pipeline(model_path, device, device_index)
-    # Warmup
-    _transcribe(pipeline, AUDIO, language, beam_size, batch_size, clip_seconds)
+def _shared_worker(shared_model, language, beam_size, batch_size,
+                   audio_array, ref_sha1, worker_id):
+    """Each worker gets its own pipeline wrapping the shared model."""
+    from faster_whisper import BatchedInferencePipeline
+    pipeline = BatchedInferencePipeline(shared_model)
     t0 = time.perf_counter()
-    text, _, _ = _transcribe(pipeline, AUDIO, language, beam_size, batch_size,
-                              clip_seconds)
+    segs, _ = pipeline.transcribe(audio_array, language=language,
+                                  beam_size=beam_size, batch_size=batch_size)
+    text = "".join(s.text for s in segs)
     elapsed = time.perf_counter() - t0
-    del pipeline
     return worker_id, _sha1(text), elapsed
 
 
 def test_concurrency(model_path, device, device_index, language, beam_size, batch_size,
                      stream_counts=(4, 8), clip_seconds=45):
-    """Run N pipelines in parallel; verify all produce the same transcript."""
-    print(f"\n[4] Concurrency  (streams={stream_counts}, clip={clip_seconds}s)")
+    """
+    N pipeline instances share one WhisperModel; all run concurrently.
+    ctranslate2 serialises GPU calls internally, so this tests cache correctness
+    and CPU-side concurrency rather than GPU parallelism — which is the realistic
+    production pattern (one GPU, N request threads).
+    """
+    print(f"\n[4] Concurrency  (streams={stream_counts}, clip={clip_seconds}s, shared model)")
     sys.stdout.flush()
 
-    # Get reference SHA1 from a serial run first
-    ref_pipeline = _load_pipeline(model_path, device, device_index)
-    _transcribe(ref_pipeline, AUDIO, language, beam_size, batch_size, clip_seconds)
-    ref_text, _, _ = _transcribe(ref_pipeline, AUDIO, language, beam_size,
-                                 batch_size, clip_seconds)
-    ref_sha1 = _sha1(ref_text)
-    del ref_pipeline
+    from faster_whisper import WhisperModel
+    from faster_whisper.audio import decode_audio
+
+    shared_model = WhisperModel(model_path, device=device,
+                                device_index=device_index, compute_type="float16")
+
+    # Pre-decode once so workers don't all hit disk simultaneously
+    audio_array = decode_audio(AUDIO)[:int(clip_seconds * SR)]
+
+    # Warm the shared model with a serial run to get reference SHA1
+    from faster_whisper import BatchedInferencePipeline
+    ref_pipe = BatchedInferencePipeline(shared_model)
+    ref_segs, _ = ref_pipe.transcribe(audio_array, language=language,
+                                      beam_size=beam_size, batch_size=batch_size)
+    ref_sha1 = _sha1("".join(s.text for s in ref_segs))
+    del ref_pipe
     print(f"    reference SHA1: {ref_sha1[:12]}…")
     sys.stdout.flush()
 
@@ -224,8 +238,8 @@ def test_concurrency(model_path, device, device_index, language, beam_size, batc
         t_wall0 = time.perf_counter()
         with ThreadPoolExecutor(max_workers=n_streams) as ex:
             futures = [
-                ex.submit(_worker, model_path, device, device_index, language,
-                          beam_size, batch_size, clip_seconds, i)
+                ex.submit(_shared_worker, shared_model, language,
+                          beam_size, batch_size, audio_array, ref_sha1, i)
                 for i in range(n_streams)
             ]
             outcomes = [f.result() for f in futures]
