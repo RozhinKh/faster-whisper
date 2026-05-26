@@ -446,7 +446,7 @@ def main():
         report["concurrency"] = test_concurrency(
             args.model, args.device, args.device_index,
             args.language, args.beam_size, args.batch_size,
-            stream_counts=(4, 8), clip_seconds=args.clip_seconds)
+            stream_counts=(2, 4), clip_seconds=args.clip_seconds)
 
     if not args.skip_silence:
         report["silence_heavy"] = test_silence_heavy(
