@@ -51,9 +51,13 @@ def _load_pipeline(model_path, device, device_index, compute_type="float16"):
 def _transcribe(pipeline, audio_or_path, language, beam_size, batch_size,
                 clip_seconds=None):
     """Returns (transcript, list[Segment], elapsed_s)."""
+    from faster_whisper.audio import decode_audio
+
     kwargs = {"language": language, "beam_size": beam_size, "batch_size": batch_size}
-    if isinstance(audio_or_path, str) and clip_seconds is not None:
-        kwargs["clip_timestamps"] = f"0,{clip_seconds}"
+
+    if clip_seconds is not None:
+        audio = decode_audio(audio_or_path) if isinstance(audio_or_path, str) else audio_or_path
+        audio_or_path = audio[:int(clip_seconds * SR)]
 
     t0 = time.perf_counter()
     segs, _ = pipeline.transcribe(audio_or_path, **kwargs)
