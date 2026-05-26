@@ -65,7 +65,7 @@ def make_inference_fn(
             fn = make_inference_fn(compute_type=ct)
             runtimes = timeit.repeat(fn, repeat=3, number=10)
     """
-    m = WhisperModel(model_path, device=device, device_index=device_index, compute_type=compute_type, flash_attention=True)
+    m = WhisperModel(model_path, device=device, device_index=device_index, compute_type=compute_type)
     if batched:
         p = BatchedInferencePipeline(m)
 

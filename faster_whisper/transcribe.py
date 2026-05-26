@@ -142,15 +142,13 @@ class BatchedInferencePipeline:
             segmented_outputs.append(
                 [
                     dict(
-                        text=tokenizer.decode(subsegment["tokens"]),
+                        text=(decoded := tokenizer.decode(subsegment["tokens"])),
                         avg_logprob=output["avg_logprob"],
                         no_speech_prob=output["no_speech_prob"],
                         tokens=subsegment["tokens"],
                         start=subsegment["start"],
                         end=subsegment["end"],
-                        compression_ratio=get_compression_ratio(
-                            tokenizer.decode(subsegment["tokens"])
-                        ),
+                        compression_ratio=get_compression_ratio(decoded),
                         seek=int(
                             chunk_metadata["offset"] * self.model.frames_per_second
                         ),
@@ -460,26 +458,30 @@ class BatchedInferencePipeline:
             format_timestamp(duration - duration_after_vad),
         )
 
-        features = (
-            [self.model.feature_extractor(chunk)[..., :-1] for chunk in audio_chunks]
-            if duration_after_vad
-            else []
-        )
-
         all_language_probs = None
-        # detecting the language if not provided
+        # Only extract features upfront when multilingual language detection is needed.
+        # Otherwise features are extracted lazily inside _batched_segments_generator,
+        # overlapped with GPU inference for the previous batch.
+        _precomputed_features = None
+
         if language is None:
             if not self.model.model.is_multilingual:
                 language = "en"
                 language_probability = 1
             else:
+                # Language detection needs all features concatenated along the time axis.
+                _raw_features = (
+                    [self.model.feature_extractor(chunk)[..., :-1] for chunk in audio_chunks]
+                    if duration_after_vad
+                    else []
+                )
                 (
                     language,
                     language_probability,
                     all_language_probs,
                 ) = self.model.detect_language(
                     features=np.concatenate(
-                        features
+                        _raw_features
                         + [
                             np.full((self.model.model.n_mels, 1), -1.5, dtype="float32")
                         ],
@@ -493,6 +495,12 @@ class BatchedInferencePipeline:
                     "Detected language '%s' with probability %.2f",
                     language,
                     language_probability,
+                )
+                # Stack for direct use in the generator (no further extraction needed)
+                _precomputed_features = (
+                    np.stack([pad_or_trim(f) for f in _raw_features])
+                    if _raw_features
+                    else []
                 )
         else:
             if not self.model.model.is_multilingual and language != "en":
@@ -509,10 +517,6 @@ class BatchedInferencePipeline:
             self.model.model.is_multilingual,
             task=task,
             language=language,
-        )
-
-        features = (
-            np.stack([pad_or_trim(feature) for feature in features]) if features else []
         )
 
         options = TranscriptionOptions(
@@ -562,8 +566,18 @@ class BatchedInferencePipeline:
             all_language_probs=all_language_probs,
         )
 
+        # When language was already known, pass raw audio_chunks so the generator
+        # can pipeline feature extraction with GPU inference. When features were
+        # pre-extracted for language detection, pass the stacked array directly.
+        # Use an empty list when there is no voiced audio so the generator exits
+        # immediately without attempting to extract features for empty chunks.
+        _gen_input = (
+            []
+            if not duration_after_vad
+            else (audio_chunks if _precomputed_features is None else _precomputed_features)
+        )
         segments = self._batched_segments_generator(
-            features,
+            _gen_input,
             tokenizer,
             chunks_metadata,
             batch_size,
@@ -578,40 +592,98 @@ class BatchedInferencePipeline:
         return segments, info
 
     def _batched_segments_generator(
-        self, features, tokenizer, chunks_metadata, batch_size, options, log_progress
+        self, features_or_chunks, tokenizer, chunks_metadata, batch_size, options, log_progress
     ):
-        pbar = tqdm(total=len(features), disable=not log_progress, position=0)
+        from concurrent.futures import ThreadPoolExecutor
+
+        # Distinguish pre-extracted features (np.ndarray, shape (n,80,3000)) from
+        # raw audio chunks (list of 1-D arrays).  Pre-extracted features arrive when
+        # multilingual language detection was required; audio chunks arrive in the
+        # common case where the language is already known.
+        precomputed = isinstance(features_or_chunks, np.ndarray)
+        n_items = len(features_or_chunks)
+
+        pbar = tqdm(total=n_items, disable=not log_progress, position=0)
         seg_idx = 0
-        for i in range(0, len(features), batch_size):
-            results = self.forward(
-                features[i : i + batch_size],
-                tokenizer,
-                chunks_metadata[i : i + batch_size],
-                options,
-            )
+        batch_starts = list(range(0, n_items, batch_size))
 
-            for result in results:
-                for segment in result:
-                    seg_idx += 1
-                    yield Segment(
-                        seek=segment["seek"],
-                        id=seg_idx,
-                        text=segment["text"],
-                        start=round(segment["start"], 3),
-                        end=round(segment["end"], 3),
-                        words=(
-                            None
-                            if not options.word_timestamps
-                            else [Word(**word) for word in segment["words"]]
-                        ),
-                        tokens=segment["tokens"],
-                        avg_logprob=segment["avg_logprob"],
-                        no_speech_prob=segment["no_speech_prob"],
-                        compression_ratio=segment["compression_ratio"],
-                        temperature=options.temperatures[0],
+        if precomputed:
+            # Features already available — iterate directly without extra threads.
+            for i in batch_starts:
+                results = self.forward(
+                    features_or_chunks[i : i + batch_size],
+                    tokenizer,
+                    chunks_metadata[i : i + batch_size],
+                    options,
+                )
+                for result in results:
+                    for segment in result:
+                        seg_idx += 1
+                        yield Segment(
+                            seek=segment["seek"],
+                            id=seg_idx,
+                            text=segment["text"],
+                            start=round(segment["start"], 3),
+                            end=round(segment["end"], 3),
+                            words=(
+                                None
+                                if not options.word_timestamps
+                                else [Word(**word) for word in segment["words"]]
+                            ),
+                            tokens=segment["tokens"],
+                            avg_logprob=segment["avg_logprob"],
+                            no_speech_prob=segment["no_speech_prob"],
+                            compression_ratio=segment["compression_ratio"],
+                            temperature=options.temperatures[0],
+                        )
+                    pbar.update(1)
+        else:
+            # Pipelined path: a single background thread extracts features for batch N+1
+            # while the GPU is busy with batch N.  Because ctranslate2 releases the GIL
+            # during CUDA operations, the background thread runs freely and hides most
+            # of the feature-extraction latency under GPU compute.
+            audio_chunks = features_or_chunks
+
+            def _extract_batch(start):
+                batch = audio_chunks[start : start + batch_size]
+                feats = [self.model.feature_extractor(chunk)[..., :-1] for chunk in batch]
+                return np.stack([pad_or_trim(f) for f in feats])
+
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                # Submit all extraction jobs up front.  The single worker processes
+                # them sequentially, but each job begins as soon as the GPU starts
+                # the previous batch, so extraction and inference overlap.
+                futures = [executor.submit(_extract_batch, i) for i in batch_starts]
+
+                for i, future in zip(batch_starts, futures):
+                    features = future.result()
+                    results = self.forward(
+                        features,
+                        tokenizer,
+                        chunks_metadata[i : i + batch_size],
+                        options,
                     )
-
-                pbar.update(1)
+                    for result in results:
+                        for segment in result:
+                            seg_idx += 1
+                            yield Segment(
+                                seek=segment["seek"],
+                                id=seg_idx,
+                                text=segment["text"],
+                                start=round(segment["start"], 3),
+                                end=round(segment["end"], 3),
+                                words=(
+                                    None
+                                    if not options.word_timestamps
+                                    else [Word(**word) for word in segment["words"]]
+                                ),
+                                tokens=segment["tokens"],
+                                avg_logprob=segment["avg_logprob"],
+                                no_speech_prob=segment["no_speech_prob"],
+                                compression_ratio=segment["compression_ratio"],
+                                temperature=options.temperatures[0],
+                            )
+                        pbar.update(1)
 
         pbar.close()
         self.last_speech_timestamp = 0.0
