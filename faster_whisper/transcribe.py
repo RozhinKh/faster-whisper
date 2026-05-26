@@ -2,6 +2,7 @@ import itertools
 import json
 import logging
 import os
+import threading
 import zlib
 
 from dataclasses import asdict, dataclass
@@ -123,6 +124,7 @@ class BatchedInferencePipeline:
         self._vad_cache_val = None
         self._feat_cache_fp = None   # fingerprint of audio whose features are stored
         self._feat_cache: dict = {}  # (batch_start, batch_size) -> np.ndarray
+        self._cache_lock = threading.Lock()  # guards all cache fields above
 
     def forward(self, features, tokenizer, chunks_metadata, options):
         encoder_output, outputs = self.generate_segment_batched(
@@ -429,12 +431,15 @@ class BatchedInferencePipeline:
 
                 from dataclasses import astuple as _astuple
                 _vad_key = (_audio_fp, _astuple(vad_parameters))
-                if self._vad_cache_key == _vad_key:
-                    clip_timestamps = self._vad_cache_val
-                else:
+                with self._cache_lock:
+                    _vad_hit = self._vad_cache_key == _vad_key
+                    if _vad_hit:
+                        clip_timestamps = self._vad_cache_val
+                if not _vad_hit:
                     clip_timestamps = get_speech_timestamps(audio, vad_parameters)
-                    self._vad_cache_key = _vad_key
-                    self._vad_cache_val = clip_timestamps
+                    with self._cache_lock:
+                        self._vad_cache_key = _vad_key
+                        self._vad_cache_val = clip_timestamps
             # run the audio if it is less than 30 sec even without clip_timestamps
             elif duration < chunk_length:
                 clip_timestamps = [{"start": 0, "end": audio.shape[0]}]
@@ -681,25 +686,32 @@ class BatchedInferencePipeline:
             audio_chunks = features_or_chunks
 
             # Evict the feature cache when a different audio array is processed.
-            if audio_fp != self._feat_cache_fp:
-                self._feat_cache.clear()
-                self._feat_cache_fp = audio_fp
+            with self._cache_lock:
+                if audio_fp != self._feat_cache_fp:
+                    self._feat_cache.clear()
+                    self._feat_cache_fp = audio_fp
 
             def _extract_and_cache(start):
                 key = (start, batch_size)
-                if key in self._feat_cache:
-                    return self._feat_cache[key]
+                with self._cache_lock:
+                    cached = self._feat_cache.get(key)
+                if cached is not None:
+                    return cached
                 batch = audio_chunks[start : start + batch_size]
                 feats = [self.model.feature_extractor(chunk)[..., :-1] for chunk in batch]
                 result = np.stack([pad_or_trim(f) for f in feats])
-                self._feat_cache[key] = result
+                with self._cache_lock:
+                    self._feat_cache[key] = result
                 return result
 
             # Fast path: all batches already cached from a prior call on the same audio.
             # Skip the executor entirely and go straight to GPU inference.
-            if all((i, batch_size) in self._feat_cache for i in batch_starts):
+            with self._cache_lock:
+                _all_cached = all((i, batch_size) in self._feat_cache for i in batch_starts)
+            if _all_cached:
                 for i in batch_starts:
-                    features = self._feat_cache[(i, batch_size)]
+                    with self._cache_lock:
+                        features = self._feat_cache[(i, batch_size)]
                     results = self.forward(
                         features,
                         tokenizer,
