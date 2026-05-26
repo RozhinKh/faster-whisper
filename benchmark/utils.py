@@ -12,7 +12,7 @@ BENCHMARK_DIR = os.path.dirname(os.path.abspath(__file__))
 BENCHMARK_AUDIO = os.path.join(BENCHMARK_DIR, "benchmark.m4a")
 
 # Prefer a pre-downloaded local copy; fall back to HF download.
-_LOCAL_MODEL = os.path.join(os.path.dirname(BENCHMARK_DIR), "models", "faster-whisper-large-v3")
+_LOCAL_MODEL = os.path.join(os.path.dirname(os.path.dirname(BENCHMARK_DIR)), "models", "faster-whisper-large-v3")
 model_path = _LOCAL_MODEL if os.path.isdir(_LOCAL_MODEL) else "large-v3"
 _model = None
 _pipeline = None
