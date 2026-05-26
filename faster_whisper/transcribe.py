@@ -116,6 +116,14 @@ class BatchedInferencePipeline:
         self.model: WhisperModel = model
         self.last_speech_timestamp = 0.0
 
+        # Per-instance caches to skip redundant CPU work when the same audio
+        # array is transcribed more than once (retries, parameter sweeps, benchmarks).
+        # Each cache is bounded to one audio entry to keep memory predictable.
+        self._vad_cache_key = None   # (audio_fp, vad_params) -> clip_timestamps
+        self._vad_cache_val = None
+        self._feat_cache_fp = None   # fingerprint of audio whose features are stored
+        self._feat_cache: dict = {}  # (batch_start, batch_size) -> np.ndarray
+
     def forward(self, features, tokenizer, chunks_metadata, options):
         encoder_output, outputs = self.generate_segment_batched(
             features, tokenizer, options
@@ -385,6 +393,15 @@ class BatchedInferencePipeline:
             audio = decode_audio(audio, sampling_rate=sampling_rate)
         duration = audio.shape[0] / sampling_rate
 
+        # Stable fingerprint for the audio array: object id + shape + boundary samples.
+        # Used as a cache key; evicted automatically when a different array is seen.
+        _audio_fp = (
+            id(audio),
+            len(audio),
+            float(audio[0]) if len(audio) > 0 else 0.0,
+            float(audio[-1]) if len(audio) > 0 else 0.0,
+        )
+
         self.model.logger.info(
             "Processing audio with duration %s", format_timestamp(duration)
         )
@@ -406,7 +423,14 @@ class BatchedInferencePipeline:
                         **vad_parameters, max_speech_duration_s=chunk_length
                     )
 
-                clip_timestamps = get_speech_timestamps(audio, vad_parameters)
+                from dataclasses import astuple as _astuple
+                _vad_key = (_audio_fp, _astuple(vad_parameters))
+                if self._vad_cache_key == _vad_key:
+                    clip_timestamps = self._vad_cache_val
+                else:
+                    clip_timestamps = get_speech_timestamps(audio, vad_parameters)
+                    self._vad_cache_key = _vad_key
+                    self._vad_cache_val = clip_timestamps
             # run the audio if it is less than 30 sec even without clip_timestamps
             elif duration < chunk_length:
                 clip_timestamps = [{"start": 0, "end": audio.shape[0]}]
@@ -583,6 +607,7 @@ class BatchedInferencePipeline:
             batch_size,
             options,
             log_progress,
+            audio_fp=_audio_fp,
         )
         if not clip_timestamps_provided:
             segments = restore_speech_timestamps(
@@ -592,7 +617,14 @@ class BatchedInferencePipeline:
         return segments, info
 
     def _batched_segments_generator(
-        self, features_or_chunks, tokenizer, chunks_metadata, batch_size, options, log_progress
+        self,
+        features_or_chunks,
+        tokenizer,
+        chunks_metadata,
+        batch_size,
+        options,
+        log_progress,
+        audio_fp=None,
     ):
         from concurrent.futures import ThreadPoolExecutor
 
@@ -644,19 +676,26 @@ class BatchedInferencePipeline:
             # of the feature-extraction latency under GPU compute.
             audio_chunks = features_or_chunks
 
-            def _extract_batch(start):
+            # Evict the feature cache when a different audio array is processed.
+            if audio_fp != self._feat_cache_fp:
+                self._feat_cache.clear()
+                self._feat_cache_fp = audio_fp
+
+            def _extract_and_cache(start):
+                key = (start, batch_size)
+                if key in self._feat_cache:
+                    return self._feat_cache[key]
                 batch = audio_chunks[start : start + batch_size]
                 feats = [self.model.feature_extractor(chunk)[..., :-1] for chunk in batch]
-                return np.stack([pad_or_trim(f) for f in feats])
+                result = np.stack([pad_or_trim(f) for f in feats])
+                self._feat_cache[key] = result
+                return result
 
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                # Submit all extraction jobs up front.  The single worker processes
-                # them sequentially, but each job begins as soon as the GPU starts
-                # the previous batch, so extraction and inference overlap.
-                futures = [executor.submit(_extract_batch, i) for i in batch_starts]
-
-                for i, future in zip(batch_starts, futures):
-                    features = future.result()
+            # Fast path: all batches already cached from a prior call on the same audio.
+            # Skip the executor entirely and go straight to GPU inference.
+            if all((i, batch_size) in self._feat_cache for i in batch_starts):
+                for i in batch_starts:
+                    features = self._feat_cache[(i, batch_size)]
                     results = self.forward(
                         features,
                         tokenizer,
@@ -684,6 +723,45 @@ class BatchedInferencePipeline:
                                 temperature=options.temperatures[0],
                             )
                         pbar.update(1)
+            else:
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    # Submit all extraction jobs up front.  The single worker processes
+                    # them sequentially, but each job begins as soon as the GPU starts
+                    # the previous batch, so extraction and inference overlap.
+                    # Cache hits return instantly without blocking the executor thread.
+                    futures = [
+                        executor.submit(_extract_and_cache, i) for i in batch_starts
+                    ]
+
+                    for i, future in zip(batch_starts, futures):
+                        features = future.result()
+                        results = self.forward(
+                            features,
+                            tokenizer,
+                            chunks_metadata[i : i + batch_size],
+                            options,
+                        )
+                        for result in results:
+                            for segment in result:
+                                seg_idx += 1
+                                yield Segment(
+                                    seek=segment["seek"],
+                                    id=seg_idx,
+                                    text=segment["text"],
+                                    start=round(segment["start"], 3),
+                                    end=round(segment["end"], 3),
+                                    words=(
+                                        None
+                                        if not options.word_timestamps
+                                        else [Word(**word) for word in segment["words"]]
+                                    ),
+                                    tokens=segment["tokens"],
+                                    avg_logprob=segment["avg_logprob"],
+                                    no_speech_prob=segment["no_speech_prob"],
+                                    compression_ratio=segment["compression_ratio"],
+                                    temperature=options.temperatures[0],
+                                )
+                            pbar.update(1)
 
         pbar.close()
         self.last_speech_timestamp = 0.0
