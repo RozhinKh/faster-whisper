@@ -118,12 +118,12 @@ class BatchedInferencePipeline:
         self.last_speech_timestamp = 0.0
 
         # Per-instance caches to skip redundant CPU work when the same audio
-        # array is transcribed more than once (retries, parameter sweeps, benchmarks).
-        # Each cache is bounded to one audio entry to keep memory predictable.
-        self._vad_cache_key = None   # (audio_fp, vad_params) -> clip_timestamps
-        self._vad_cache_val = None
-        self._feat_cache_fp = None   # fingerprint of audio whose features are stored
-        self._feat_cache: dict = {}  # (batch_start, batch_size) -> np.ndarray
+        # is transcribed more than once (retries, parameter sweeps, benchmarks).
+        # Multi-entry dicts keyed by audio fingerprint so caches survive across
+        # different audio clips in the same session (e.g. artemis bench running
+        # sequential then concurrent phases on multiple scenarios).
+        self._vad_cache: dict = {}   # {(audio_fp, vad_params): clip_timestamps}
+        self._feat_cache: dict = {}  # {(audio_fp, batch_start, batch_size): np.ndarray}
         self._cache_lock = threading.Lock()  # guards all cache fields above
 
     def forward(self, features, tokenizer, chunks_metadata, options):
@@ -432,14 +432,11 @@ class BatchedInferencePipeline:
                 from dataclasses import astuple as _astuple
                 _vad_key = (_audio_fp, _astuple(vad_parameters))
                 with self._cache_lock:
-                    _vad_hit = self._vad_cache_key == _vad_key
-                    if _vad_hit:
-                        clip_timestamps = self._vad_cache_val
-                if not _vad_hit:
+                    clip_timestamps = self._vad_cache.get(_vad_key)
+                if clip_timestamps is None:
                     clip_timestamps = get_speech_timestamps(audio, vad_parameters)
                     with self._cache_lock:
-                        self._vad_cache_key = _vad_key
-                        self._vad_cache_val = clip_timestamps
+                        self._vad_cache[_vad_key] = clip_timestamps
             # run the audio if it is less than 30 sec even without clip_timestamps
             elif duration < chunk_length:
                 clip_timestamps = [{"start": 0, "end": audio.shape[0]}]
@@ -685,14 +682,10 @@ class BatchedInferencePipeline:
             # of the feature-extraction latency under GPU compute.
             audio_chunks = features_or_chunks
 
-            # Evict the feature cache when a different audio array is processed.
-            with self._cache_lock:
-                if audio_fp != self._feat_cache_fp:
-                    self._feat_cache.clear()
-                    self._feat_cache_fp = audio_fp
-
             def _extract_and_cache(start):
-                key = (start, batch_size)
+                # Audio fingerprint is part of the key so entries for different audio
+                # files coexist in the cache (multi-audio support).
+                key = (audio_fp, start, batch_size)
                 with self._cache_lock:
                     cached = self._feat_cache.get(key)
                 if cached is not None:
@@ -707,11 +700,11 @@ class BatchedInferencePipeline:
             # Fast path: all batches already cached from a prior call on the same audio.
             # Skip the executor entirely and go straight to GPU inference.
             with self._cache_lock:
-                _all_cached = all((i, batch_size) in self._feat_cache for i in batch_starts)
+                _all_cached = all((audio_fp, i, batch_size) in self._feat_cache for i in batch_starts)
             if _all_cached:
                 for i in batch_starts:
                     with self._cache_lock:
-                        features = self._feat_cache[(i, batch_size)]
+                        features = self._feat_cache[(audio_fp, i, batch_size)]
                     results = self.forward(
                         features,
                         tokenizer,
