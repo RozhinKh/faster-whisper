@@ -40,7 +40,7 @@ Config: int8_float16 / beam=5 / batch=32 on both master and candidate.
 
 ## 2. What Changed
 
-All optimizations are in `faster_whisper/transcribe.py` — no configuration changes.
+Core optimizations are in `faster_whisper/transcribe.py`. `faster_whisper/vad.py` was also updated to run VAD on GPU.
 
 ### Feature extraction pipelining
 
@@ -65,6 +65,10 @@ All four cache fields are protected by a `threading.Lock`. Expensive operations 
 ### Eliminated duplicate tokenizer decode
 
 `tokenizer.decode(tokens)` was called twice per subsegment in `forward()`. Walrus operator computes it once and reuses the result for both `text=` and `get_compression_ratio()`.
+
+### VAD on GPU
+
+`SileroVADModel` in `faster_whisper/vad.py` previously hardcoded `CPUExecutionProvider`. The session now prefers `CUDAExecutionProvider` (with the correct `device_id`) when available, falling back to CPU otherwise. This reduces Silero VAD inference from ~1.5 s (CPU) to ~0.05 s (GPU) per request on the 13-minute benchmark file — a saving that applies to every call regardless of caching.
 
 ---
 
@@ -110,6 +114,7 @@ Candidate variance across 3 repetitions: 0.113 s (0.18%) — extremely stable. T
 
 | Change | Mechanism | Latency improvement |
 |---|---|---|
+| VAD on GPU | CUDAExecutionProvider in ONNX session — every request | ~−15% |
 | VAD + feature caching | Skip preprocessing on repeated calls | ~−10% |
 | Feature extraction pipelining | CPU/GPU overlap via background thread | ~−11% |
 | Duplicate decode elimination | Walrus operator, one tokenizer decode per subsegment | ~−1% |

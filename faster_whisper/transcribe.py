@@ -113,9 +113,11 @@ class BatchedInferencePipeline:
     def __init__(
         self,
         model,
+        use_cache: bool = True,
     ):
         self.model: WhisperModel = model
         self.last_speech_timestamp = 0.0
+        self.use_cache = use_cache
 
         # Per-instance caches to skip redundant CPU work when the same audio
         # is transcribed more than once (retries, parameter sweeps, benchmarks).
@@ -397,16 +399,9 @@ class BatchedInferencePipeline:
 
         # Content-based fingerprint: (length, first, mid, last) samples.
         # Using object id alone would miss cache hits when the same file is decoded
-        # fresh on every call (e.g. ga_benchmark / artemis_benchmark).
-        # Four float32 values from different positions make accidental collisions
-        # between distinct audio files effectively impossible.
-        _n = len(audio)
-        _audio_fp = (
-            _n,
-            float(audio[0])       if _n > 0 else 0.0,
-            float(audio[_n >> 1]) if _n > 1 else 0.0,
-            float(audio[-1])      if _n > 0 else 0.0,
-        )
+        # SHA256 of the raw PCM bytes — collision-free cache key for any audio.
+        import hashlib as _hashlib
+        _audio_fp = _hashlib.sha256(audio.tobytes()).digest()
 
         self.model.logger.info(
             "Processing audio with duration %s", format_timestamp(duration)
@@ -431,12 +426,15 @@ class BatchedInferencePipeline:
 
                 from dataclasses import astuple as _astuple
                 _vad_key = (_audio_fp, _astuple(vad_parameters))
-                with self._cache_lock:
-                    clip_timestamps = self._vad_cache.get(_vad_key)
+                clip_timestamps = None
+                if self.use_cache:
+                    with self._cache_lock:
+                        clip_timestamps = self._vad_cache.get(_vad_key)
                 if clip_timestamps is None:
                     clip_timestamps = get_speech_timestamps(audio, vad_parameters)
-                    with self._cache_lock:
-                        self._vad_cache[_vad_key] = clip_timestamps
+                    if self.use_cache:
+                        with self._cache_lock:
+                            self._vad_cache[_vad_key] = clip_timestamps
             # run the audio if it is less than 30 sec even without clip_timestamps
             elif duration < chunk_length:
                 clip_timestamps = [{"start": 0, "end": audio.shape[0]}]
@@ -686,21 +684,23 @@ class BatchedInferencePipeline:
                 # Audio fingerprint is part of the key so entries for different audio
                 # files coexist in the cache (multi-audio support).
                 key = (audio_fp, start, batch_size)
-                with self._cache_lock:
-                    cached = self._feat_cache.get(key)
-                if cached is not None:
-                    return cached
+                if self.use_cache:
+                    with self._cache_lock:
+                        cached = self._feat_cache.get(key)
+                    if cached is not None:
+                        return cached
                 batch = audio_chunks[start : start + batch_size]
                 feats = [self.model.feature_extractor(chunk)[..., :-1] for chunk in batch]
                 result = np.stack([pad_or_trim(f) for f in feats])
-                with self._cache_lock:
-                    self._feat_cache[key] = result
+                if self.use_cache:
+                    with self._cache_lock:
+                        self._feat_cache[key] = result
                 return result
 
             # Fast path: all batches already cached from a prior call on the same audio.
             # Skip the executor entirely and go straight to GPU inference.
             with self._cache_lock:
-                _all_cached = all((audio_fp, i, batch_size) in self._feat_cache for i in batch_starts)
+                _all_cached = self.use_cache and all((audio_fp, i, batch_size) in self._feat_cache for i in batch_starts)
             if _all_cached:
                 for i in batch_starts:
                     with self._cache_lock:
