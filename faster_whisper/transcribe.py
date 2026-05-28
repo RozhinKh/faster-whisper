@@ -397,11 +397,8 @@ class BatchedInferencePipeline:
             audio = decode_audio(audio, sampling_rate=sampling_rate)
         duration = audio.shape[0] / sampling_rate
 
-        # Content-based fingerprint: (length, first, mid, last) samples.
-        # Using object id alone would miss cache hits when the same file is decoded
-        # SHA256 of the raw PCM bytes — collision-free cache key for any audio.
         import hashlib as _hashlib
-        _audio_fp = _hashlib.sha256(audio.tobytes()).digest()
+        _audio_fp = _hashlib.sha256(audio.tobytes()).digest() if self.use_cache else None
 
         self.model.logger.info(
             "Processing audio with duration %s", format_timestamp(duration)
@@ -679,6 +676,7 @@ class BatchedInferencePipeline:
             # during CUDA operations, the background thread runs freely and hides most
             # of the feature-extraction latency under GPU compute.
             audio_chunks = features_or_chunks
+            _n_mels = self.model.feature_extractor.mel_filters.shape[0]
 
             def _extract_and_cache(start):
                 # Audio fingerprint is part of the key so entries for different audio
@@ -690,8 +688,13 @@ class BatchedInferencePipeline:
                     if cached is not None:
                         return cached
                 batch = audio_chunks[start : start + batch_size]
-                feats = [self.model.feature_extractor(chunk)[..., :-1] for chunk in batch]
-                result = np.stack([pad_or_trim(f) for f in feats])
+                result = np.zeros((len(batch), _n_mels, 3000), dtype=np.float32)
+                for j, chunk in enumerate(batch):
+                    f = self.model.feature_extractor(chunk)
+                    # f.shape = (n_mels, n_frames+1); exclude the last frame to match
+                    # the original [..,-1] slice, then copy up to 3000 frames.
+                    n = min(f.shape[-1] - 1, 3000)
+                    result[j, :, :n] = f[:, :n]
                 if self.use_cache:
                     with self._cache_lock:
                         self._feat_cache[key] = result
@@ -733,17 +736,21 @@ class BatchedInferencePipeline:
                             )
                         pbar.update(1)
             else:
-                with ThreadPoolExecutor(max_workers=1) as executor:
-                    # Submit all extraction jobs up front.  The single worker processes
-                    # them sequentially, but each job begins as soon as the GPU starts
-                    # the previous batch, so extraction and inference overlap.
-                    # Cache hits return instantly without blocking the executor thread.
-                    futures = [
-                        executor.submit(_extract_and_cache, i) for i in batch_starts
-                    ]
+                # For multi-batch audio use a background thread so feature extraction
+                # for batch N+1 overlaps with GPU inference on batch N.  For single-batch
+                # audio the executor adds thread-creation overhead with no pipeline benefit.
+                if len(batch_starts) > 1:
+                    _pool = ThreadPoolExecutor(max_workers=1)
+                    _futures = [_pool.submit(_extract_and_cache, i) for i in batch_starts]
+                    _get_features = lambda fut: fut.result()
+                else:
+                    _pool = None
+                    _futures = [_extract_and_cache(batch_starts[0])]
+                    _get_features = lambda feat: feat
 
-                    for i, future in zip(batch_starts, futures):
-                        features = future.result()
+                try:
+                    for i, future in zip(batch_starts, _futures):
+                        features = _get_features(future)
                         results = self.forward(
                             features,
                             tokenizer,
@@ -771,6 +778,9 @@ class BatchedInferencePipeline:
                                     temperature=options.temperatures[0],
                                 )
                             pbar.update(1)
+                finally:
+                    if _pool is not None:
+                        _pool.shutdown(wait=True)
 
         pbar.close()
         self.last_speech_timestamp = 0.0

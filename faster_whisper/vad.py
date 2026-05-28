@@ -94,10 +94,7 @@ def get_speech_timestamps(
 
     model = get_vad_model(device_index)
 
-    padded_audio = np.pad(
-        audio, (0, window_size_samples - audio.shape[0] % window_size_samples)
-    )
-    speech_probs = model(padded_audio)
+    speech_probs = model(audio)
 
     triggered = False
     speeches = []
@@ -357,6 +354,7 @@ class SileroVADModel:
         opts.intra_op_num_threads = 1
         opts.enable_cpu_mem_arena = False
         opts.log_severity_level = 4
+        opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
         cuda_provider = (
             "CUDAExecutionProvider",
@@ -377,37 +375,43 @@ class SileroVADModel:
         self, audio: np.ndarray, num_samples: int = 512, context_size_samples: int = 64
     ):
         assert audio.ndim == 1, "Input should be a 1D array"
-        assert (
-            audio.shape[0] % num_samples == 0
-        ), "Input size should be a multiple of num_samples"
+
+        n = len(audio)
+        # Preserve original padding semantics: always add (num_samples - n % num_samples)
+        # zeros at the end, which appends a full extra window when audio is already aligned.
+        pad_n = num_samples - n % num_samples
+        num_segments = (n + pad_n) // num_samples
+        full_segs = n // num_samples  # segments fully covered by audio (no padding needed)
 
         h = np.zeros((1, 1, 128), dtype="float32")
         c = np.zeros((1, 1, 128), dtype="float32")
-        batched_audio = audio.reshape(-1, num_samples)
-        num_segments = batched_audio.shape[0]
 
-        # Pre-allocate the full output buffer (context + audio) in one shot.
-        # This avoids the roll + concatenate sequence which creates three
-        # short-lived intermediate arrays on every call.
-        buf = np.empty(
-            (num_segments, context_size_samples + num_samples), dtype=np.float32
-        )
-        # Segment 0 gets zero context; all others inherit the tail of the previous segment.
+        # Single allocation — eliminates the separate np.pad copy the caller previously
+        # performed.  We use np.empty and zero only the parts that must be zero (segment 0
+        # context + last-segment tail padding) to avoid a 90 MB memset for long audio.
+        buf = np.empty((num_segments, context_size_samples + num_samples), dtype=np.float32)
+        # Segment 0: zero context; audio filled below (or stays uninitialized then overwritten).
         buf[0, :context_size_samples] = 0.0
-        if num_segments > 1:
-            buf[1:, :context_size_samples] = batched_audio[:-1, -context_size_samples:]
-        buf[:, context_size_samples:] = batched_audio
-        batched_audio = buf
 
-        encoder_batch_size = 10000
-        outputs = []
-        for i in range(0, num_segments, encoder_batch_size):
-            output, h, c = self.session.run(
-                None,
-                {"input": batched_audio[i : i + encoder_batch_size], "h": h, "c": c},
-            )
-            outputs.append(output)
+        remainder = n % num_samples
+        if full_segs > 0:
+            # View over the aligned portion of audio (no copy).
+            src = audio[:full_segs * num_samples].reshape(full_segs, num_samples)
+            # Copy audio into the audio portion of each full segment.
+            buf[:full_segs, context_size_samples:] = src
+            # Context for segments 1..num_segments-1: last context_size_samples of previous audio.
+            buf[1:num_segments, :context_size_samples] = src[:, -context_size_samples:]
+        if remainder:
+            buf[full_segs, context_size_samples:context_size_samples + remainder] = audio[full_segs * num_samples:]
+            # Zero-pad the tail of the last partial segment.
+            buf[full_segs, context_size_samples + remainder:] = 0.0
+        else:
+            # Audio is aligned; the extra window is all zeros.
+            buf[full_segs, context_size_samples:] = 0.0
 
-        out = np.concatenate(outputs, axis=0)
+        output, h, c = self.session.run(
+            None,
+            {"input": buf, "h": h, "c": c},
+        )
 
-        return out
+        return output

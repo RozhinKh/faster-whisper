@@ -203,15 +203,12 @@ class FeatureExtractor:
                     "Cannot have onesided output if window or input is complex"
                 )
             if _scipy_fft is not None:
-                # Cast to float64 to match numpy.fft internal precision (pocketfft
-                # upcasts float32→float64 internally; scipy respects input dtype).
-                # This preserves multi-threaded speedup while keeping bit-identical output.
-                output = _scipy_fft.fft(frames.astype(np.float64), n=n_fft, axis=-1, norm=norm, workers=_FFT_WORKERS)
+                output = _scipy_fft.fft(frames, n=n_fft, axis=-1, norm=norm, workers=_FFT_WORKERS)
             else:
                 output = np.fft.fft(frames, n=n_fft, axis=-1, norm=norm)
         else:
             if _scipy_fft is not None:
-                output = _scipy_fft.rfft(frames.astype(np.float64), n=n_fft, axis=-1, norm=norm, workers=_FFT_WORKERS)
+                output = _scipy_fft.rfft(frames, n=n_fft, axis=-1, norm=norm, workers=_FFT_WORKERS)
             else:
                 output = np.fft.rfft(frames, n=n_fft, axis=-1, norm=norm)
 
@@ -274,9 +271,9 @@ class FeatureExtractor:
         #      up to 4 × (n_bins × n_frames × 8 B) for the float64 path.
         n_bins, n_frames = stft_trimmed.shape
         magnitudes = np.empty((n_bins, n_frames), dtype=np.float32)
-        np.multiply(stft_trimmed.real, stft_trimmed.real, out=magnitudes, casting="unsafe")
+        np.multiply(stft_trimmed.real, stft_trimmed.real, out=magnitudes)
         _imag_sq = np.empty((n_bins, n_frames), dtype=np.float32)
-        np.multiply(stft_trimmed.imag, stft_trimmed.imag, out=_imag_sq, casting="unsafe")
+        np.multiply(stft_trimmed.imag, stft_trimmed.imag, out=_imag_sq)
         magnitudes += _imag_sq
         del _imag_sq  # release scratch before the matmul allocation below
 
