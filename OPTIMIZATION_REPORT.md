@@ -245,42 +245,12 @@ The optimization targets long-form transcription. At 30 s the gain is minimal; f
 
 ---
 
-## 8. Cross-Hardware Validation — NVIDIA A100-SXM4-80GB (Golden Beast 2)
+## 8. Summary
 
-The same code changes were tested on a second machine (Golden Beast 2) equipped with 8× NVIDIA A100-SXM4-80GB (80 GB VRAM each, CUDA 13.1). The A100 config sweep identified bfloat16 / beam=5 / batch=32 as optimal — int8_float16 is slower on A100 due to its superior native FP16/BF16 tensor core throughput.
-
-### Config sweep — A100 baseline
-
-| Config | Min per run |
-|---|---|
-| float16 / beam=5 / batch=16 | 8.763 s |
-| int8_float16 / beam=5 / batch=16 | 9.081 s |
-| float16 / beam=5 / batch=32 | 7.761 s |
-| float16 / beam=5 / batch=64 | 7.768 s |
-| bfloat16 / beam=5 / batch=32 | 7.619 s |
-| float16 / beam=1 / batch=32 | 6.585 s |
-
-Optimal baseline config: **bfloat16 / beam=5 / batch=32**
-
-### Speed benchmark — A100 (bfloat16 / beam=5 / batch=32)
-
-| Config | Baseline | Candidate | Change |
-|---|---|---|---|
-| bfloat16 / beam=5 / batch=32 | 7.619 s | **4.760 s** | **−37.5% (1.60×)** |
-| int8_float16 / beam=5 / batch=32 | 7.892 s | **4.992 s** | **−36.8% (1.58×)** |
-
-The A100 shows larger gains than the RTX 3090 (−37.5% vs −22.4%). Because the A100 processes GPU inference faster, CPU preprocessing becomes a proportionally larger bottleneck — pipelining and GPU VAD each hide more latency. The optimizations scale with GPU compute capability rather than being tuned to a specific hardware profile.
-
----
-
-## 9. Summary
-
-Pure code optimizations applied to `BatchedInferencePipeline` and `SileroVADModel` — config held constant on both master and candidate.
+Pure code optimizations applied to `BatchedInferencePipeline` and `SileroVADModel` — config held constant at int8_float16 / beam=5 / batch=32 on both master and candidate.
 
 **VAD on GPU** moves Silero VAD inference from CPU (ONNX `CPUExecutionProvider`, ~1.5 s) to GPU (`CUDAExecutionProvider`, ~0.05 s), saving ~1.45 s on every transcription request regardless of audio content. **Feature extraction pipelining** overlaps CPU mel spectrogram extraction with GPU inference via a background thread, hiding most CPU preprocessing latency under GPU compute. Together these two changes account for the majority of the cold-pass improvement. **VAD and feature caching** (keyed by SHA-256 PCM fingerprint) provide additional benefit for repeated-audio workloads — retries, concurrent requests, session-level reuse — and can be disabled via `use_cache=False` for cold-pass measurement.
 
-**RTX 3090 (Beast3):** Cold-pass Artemis ASR benchmark: **−23.2%** on 5-minute clean audio, **−25.5%** on 21-minute telephone-quality audio. Speed benchmark: **1.29× speedup** (7.994 s → 6.206 s), 0.18% variance.
-
-**A100-SXM4-80GB (Golden Beast 2):** Speed benchmark at optimal config (bfloat16 / beam=5 / batch=32): **1.60× speedup** (7.619 s → 4.760 s). The larger gain on A100 confirms the optimizations scale with GPU compute capability — faster GPU makes CPU preprocessing a proportionally larger bottleneck, amplifying the benefit of pipelining and GPU VAD.
+Cold-pass Artemis ASR benchmark (cache disabled, both sides): **−23.2%** on 5-minute clean audio, **−25.5%** on 21-minute telephone-quality audio. Speed benchmark (SYSTRAN methodology, 30 timed runs): **1.29× speedup** (7.994 s → 6.206 s), 0.18% variance.
 
 All 6 noise conditions pass the 3% WER regression threshold. All 7 production readiness tests pass. Output is SHA1-identical across 5 consecutive runs.
