@@ -24,3 +24,6 @@ artemis_results.json
 
 # Logs
 logs/
+
+# External benchmark tool (separate repo, cloned locally for reference)
+artemis-bench/
