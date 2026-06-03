@@ -38,8 +38,6 @@ This is an optimized fork of [SYSTRAN/faster-whisper](https://github.com/SYSTRAN
 
 *Hardware: Golden Beast2 · AMD EPYC 7742 (128 cores) · 2 TB RAM · A100-SXM4-80GB GPU 5*
 
-The A100 shows larger gains because higher GPU throughput makes CPU preprocessing proportionally more expensive — exactly where the pipeline optimizations apply.
-
 ---
 
 ## What Changed
