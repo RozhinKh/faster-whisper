@@ -123,18 +123,6 @@ CV 0.3–0.8% on all cold-pass runs. Both scenarios pass validity gate.
 
 ---
 
-### Artemis ASR Benchmark — sequential warm-cache (n=20)
-
-| Scenario | n | Lat (ms) | P50 RTF | P95 RTF | CV |
-|---|---|---|---|---|---|
-| clean_short_v1 | 10 | 2,374 | 0.0079 | 0.0079 | 0.5% |
-| long_form_v1 | **20** | **9,222** | **0.0072** | 0.0073 | **0.2%** |
-| control_phrase_v1 | 20 | 499 | 0.0478 | 0.0489 | 0.7% |
-
-All 9 scenarios PASS validity gate.
-
----
-
 ### Artemis ASR Benchmark — concurrent throughput (4 streams)
 
 | Scenario | Streams | n | Lat (ms) | P50 RTF | CV |
@@ -157,7 +145,6 @@ All 9 scenarios PASS validity gate.
 | Single-batch executor skip | Avoids `ThreadPoolExecutor` overhead for short audio | Single-batch audio |
 | Duplicate decode elimination | Walrus operator, one tokenizer decode per subsegment | Every request |
 | **Cold-pass combined** | | **−15.7–17.1%** |
-| **Warm combined (cache enabled)** | | **−22–28%** |
 
 ---
 
