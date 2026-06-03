@@ -259,3 +259,4 @@ Pure code optimizations applied to `BatchedInferencePipeline` and `SileroVADMode
 **Golden Beast2 (A100-SXM4-80GB, bfloat16):** Cold-pass −18–23% across all 9 scenarios, CVs 0.1–1.4%. The A100 shows larger gains because higher GPU throughput makes CPU preprocessing proportionally more expensive — the pipelining and GPU VAD improvements have greater relative impact.
 
 All 6 noise conditions pass the 3% WER regression threshold. Output is SHA1-identical across 5 consecutive runs. Concurrency overhead at 4× load is +12 ms (+0.1%) on Beast3 and +75 ms (+0.9%) on Golden Beast2 — negligible in both cases.
+
